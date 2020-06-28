@@ -24,6 +24,7 @@
 #include "exec/cpu-defs.h"
 #include "qemu/cpu-float.h"
 #include "cpu-qom.h"
+#include "macos_aline.h"
 
 #define OS_BYTE     0
 #define OS_WORD     1
@@ -149,6 +150,9 @@ typedef struct CPUArchState {
 
     /* Fields from here on are preserved across CPU reset. */
     uint32_t features;
+
+    /* A-Line trap lookup */
+    GHashTable *alinetraps;
 } CPUM68KState;
 
 /*
