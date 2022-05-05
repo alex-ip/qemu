@@ -294,19 +294,27 @@ void lasips2_initfn(MemoryRegion *address_space,
     s->kbd.dev = ps2_kbd_init(ps2dev_update_irq, &s->kbd);
     s->mouse.dev = ps2_mouse_init(ps2dev_update_irq, &s->mouse);
 
-    memory_region_init_io(&s->kbd.reg, NULL, &lasips2_reg_ops, &s->kbd,
-                          "lasips2-kbd", 0x100);
     memory_region_add_subregion(address_space, base, &s->kbd.reg);
 
-    memory_region_init_io(&s->mouse.reg, NULL, &lasips2_reg_ops, &s->mouse,
-                          "lasips2-mouse", 0x100);
     memory_region_add_subregion(address_space, base + 0x100, &s->mouse.reg);
+}
+
+static void lasips2_init(Object *obj)
+{
+    LASIPS2State *s = LASIPS2(obj);
+
+    memory_region_init_io(&s->kbd.reg, obj, &lasips2_reg_ops, &s->kbd,
+                          "lasips2-kbd", 0x100);
+
+    memory_region_init_io(&s->mouse.reg, obj, &lasips2_reg_ops, &s->mouse,
+                          "lasips2-mouse", 0x100);
 }
 
 static const TypeInfo lasips2_info = {
     .name          = TYPE_LASIPS2,
     .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(LASIPS2State)
+    .instance_size = sizeof(LASIPS2State),
+    .instance_init = lasips2_init
 };
 
 static const TypeInfo lasips2_port_info = {
