@@ -35,9 +35,12 @@
 #include "qapi/error.h"
 
 
-struct LASIPS2State;
-typedef struct LASIPS2Port {
-    struct LASIPS2State *parent;
+typedef struct LASIPS2State LASIPS2State;
+
+struct LASIPS2Port {
+    SysBusDevice parent_obj;
+
+    LASIPS2State *parent;
     MemoryRegion reg;
     void *dev;
     uint8_t id;
@@ -45,7 +48,10 @@ typedef struct LASIPS2Port {
     uint8_t buf;
     bool loopback_rbne;
     bool irq;
-} LASIPS2Port;
+};
+
+#define TYPE_LASIPS2_PORT "lasips2-port"
+OBJECT_DECLARE_SIMPLE_TYPE(LASIPS2Port, LASIPS2_PORT)
 
 struct LASIPS2State {
     SysBusDevice parent_obj;
@@ -303,9 +309,16 @@ static const TypeInfo lasips2_info = {
     .instance_size = sizeof(LASIPS2State)
 };
 
+static const TypeInfo lasips2_port_info = {
+    .name          = TYPE_LASIPS2_PORT,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(LASIPS2Port)
+};
+
 static void lasips2_register_types(void)
 {
     type_register_static(&lasips2_info);
+    type_register_static(&lasips2_port_info);
 }
 
 type_init(lasips2_register_types)
