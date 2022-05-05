@@ -274,8 +274,8 @@ static void ps2dev_update_irq(void *opaque, int level)
     lasips2_update_irq(port->parent);
 }
 
-void lasips2_init(MemoryRegion *address_space,
-                  hwaddr base, qemu_irq irq)
+void lasips2_initfn(MemoryRegion *address_space,
+                    hwaddr base, qemu_irq irq)
 {
     LASIPS2State *s;
     DeviceState *dev;

@@ -11,6 +11,6 @@
 
 #define TYPE_LASIPS2 "lasips2"
 
-void lasips2_init(MemoryRegion *address_space, hwaddr base, qemu_irq irq);
+void lasips2_initfn(MemoryRegion *address_space, hwaddr base, qemu_irq irq);
 
 #endif /* HW_INPUT_LASIPS2_H */
