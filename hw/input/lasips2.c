@@ -299,8 +299,7 @@ void lasips2_initfn(MemoryRegion *address_space,
     qdev_set_legacy_instance_id(dev, 0xffd08000 /* LASI_PS2KBD_HPA */, 0);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     s = LASIPS2(dev);
-
-    s->irq = irq;
+    qdev_connect_gpio_out(dev, 0, s->irq);
 
     memory_region_add_subregion(address_space, base,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
@@ -339,6 +338,8 @@ static void lasips2_init(Object *obj)
     mr = MEMORY_REGION(object_resolve_path_component(OBJECT(&s->mouse),
                                                      "lasips2-mouse[0]"));
     memory_region_add_subregion(&s->mem, 0x100, mr);
+
+    qdev_init_gpio_out(DEVICE(obj), &s->irq, 1);
 }
 
 static void lasips2_class_init(ObjectClass *klass, void *data)
