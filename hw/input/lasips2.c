@@ -70,6 +70,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(LASIPS2MousePort, LASIPS2_MOUSE_PORT)
 struct LASIPS2State {
     SysBusDevice parent_obj;
 
+    MemoryRegion mem;
     LASIPS2Port kbd;
     LASIPS2Port mouse;
     qemu_irq irq;
@@ -308,27 +309,58 @@ void lasips2_initfn(MemoryRegion *address_space,
     s->kbd.dev = ps2_kbd_init(ps2dev_update_irq, &s->kbd);
     s->mouse.dev = ps2_mouse_init(ps2dev_update_irq, &s->mouse);
 
-    memory_region_add_subregion(address_space, base, &s->kbd.reg);
+    memory_region_add_subregion(address_space, base,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
+                                                       0));
+}
 
-    memory_region_add_subregion(address_space, base + 0x100, &s->mouse.reg);
+static void lasips2_realize(DeviceState *dev, Error **errp)
+{
+    LASIPS2State *s = LASIPS2(dev);
+
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->kbd), errp)) {
+        return;
+    }
+
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->mouse), errp)) {
+        return;
+    }
 }
 
 static void lasips2_init(Object *obj)
 {
     LASIPS2State *s = LASIPS2(obj);
+    MemoryRegion *mr;
 
-    memory_region_init_io(&s->kbd.reg, obj, &lasips2_reg_ops, &s->kbd,
-                          "lasips2-kbd", 0x100);
+    memory_region_init(&s->mem, obj, "lasips2", 0x200);
+    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mem);
 
-    memory_region_init_io(&s->mouse.reg, obj, &lasips2_reg_ops, &s->mouse,
-                          "lasips2-mouse", 0x100);
+    object_initialize_child(obj, "lasips2-kbd", &s->kbd,
+                            TYPE_LASIPS2_KBD_PORT);
+    mr = MEMORY_REGION(object_resolve_path_component(OBJECT(&s->kbd),
+                                                     "lasips2-kbd[0]"));
+    memory_region_add_subregion(&s->mem, 0x0, mr);
+
+    object_initialize_child(obj, "lasips2-mouse", &s->mouse,
+                            TYPE_LASIPS2_MOUSE_PORT);
+    mr = MEMORY_REGION(object_resolve_path_component(OBJECT(&s->mouse),
+                                                     "lasips2-mouse[0]"));
+    memory_region_add_subregion(&s->mem, 0x100, mr);
+}
+
+static void lasips2_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    dc->realize = lasips2_realize;
 }
 
 static const TypeInfo lasips2_info = {
     .name          = TYPE_LASIPS2,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(LASIPS2State),
-    .instance_init = lasips2_init
+    .instance_init = lasips2_init,
+    .class_init    = lasips2_class_init
 };
 
 static const TypeInfo lasips2_port_info = {
@@ -337,16 +369,34 @@ static const TypeInfo lasips2_port_info = {
     .instance_size = sizeof(LASIPS2Port)
 };
 
+static void lasips2_kbd_port_init(Object *obj)
+{
+    LASIPS2Port *lp = LASIPS2_PORT(obj);
+
+    memory_region_init_io(&lp->reg, obj, &lasips2_reg_ops, lp,
+                          "lasips2-kbd", 0x100);
+}
+
 static const TypeInfo lasips2_kbd_port_info = {
     .name          = TYPE_LASIPS2_KBD_PORT,
     .parent        = TYPE_LASIPS2_PORT,
-    .instance_size = sizeof(LASIPS2KbdPort)
+    .instance_size = sizeof(LASIPS2KbdPort),
+    .instance_init = lasips2_kbd_port_init
 };
+
+static void lasips2_mouse_port_init(Object *obj)
+{
+    LASIPS2Port *lp = LASIPS2_PORT(obj);
+
+    memory_region_init_io(&lp->reg, obj, &lasips2_reg_ops, lp,
+                          "lasips2-mouse", 0x100);
+}
 
 static const TypeInfo lasips2_mouse_port_info = {
     .name          = TYPE_LASIPS2_MOUSE_PORT,
-    .parent        = TYPE_LASI_PS2_PORT,
-    .instance_size = sizeof(LASIPS2MousePort)
+    .parent        = TYPE_LASIPS2_PORT,
+    .instance_size = sizeof(LASIPS2MousePort),
+    .instance_init = lasips2_mouse_port_init
 };
 
 static void lasips2_register_types(void)
