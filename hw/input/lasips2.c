@@ -53,6 +53,13 @@ struct LASIPS2Port {
 #define TYPE_LASIPS2_PORT "lasips2-port"
 OBJECT_DECLARE_SIMPLE_TYPE(LASIPS2Port, LASIPS2_PORT)
 
+struct LASIPS2KbdPort {
+    LASIPS2Port parent_obj;
+};
+
+#define TYPE_LASIPS2_KBD_PORT "lasips2-kbd-port"
+OBJECT_DECLARE_SIMPLE_TYPE(LASIPS2KbdPort, LASIPS2_KBD_PORT)
+
 struct LASIPS2State {
     SysBusDevice parent_obj;
 
@@ -323,10 +330,17 @@ static const TypeInfo lasips2_port_info = {
     .instance_size = sizeof(LASIPS2Port)
 };
 
+static const TypeInfo lasips2_kbd_port_info = {
+    .name          = TYPE_LASIPS2_KBD_PORT,
+    .parent        = TYPE_LASIPS2_PORT,
+    .instance_size = sizeof(LASIPS2KbdPort)
+};
+
 static void lasips2_register_types(void)
 {
     type_register_static(&lasips2_info);
     type_register_static(&lasips2_port_info);
+    type_register_static(&lasips2_kbd_port_info);
 }
 
 type_init(lasips2_register_types)
