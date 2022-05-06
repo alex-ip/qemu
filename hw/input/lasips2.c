@@ -81,7 +81,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(LASIPS2State, LASIPS2)
 
 static const VMStateDescription vmstate_lasips2 = {
     .name = "lasips2",
-    .version_id = 0,
+    .version_id = 1,
     .minimum_version_id = 0,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(kbd.control, LASIPS2State),
@@ -296,12 +296,11 @@ void lasips2_initfn(MemoryRegion *address_space,
     DeviceState *dev;
 
     dev = qdev_new(TYPE_LASIPS2);
+    qdev_set_legacy_instance_id(dev, 0xffd08000 /* LASI_PS2KBD_HPA */, 0);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     s = LASIPS2(dev);
 
     s->irq = irq;
-
-    vmstate_register(NULL, base, &vmstate_lasips2, s);
 
     memory_region_add_subregion(address_space, base,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
@@ -347,6 +346,7 @@ static void lasips2_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = lasips2_realize;
+    dc->vmsd = &vmstate_lasips2;
 }
 
 static const TypeInfo lasips2_info = {
