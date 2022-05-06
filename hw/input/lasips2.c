@@ -300,13 +300,8 @@ void lasips2_initfn(MemoryRegion *address_space,
     s = LASIPS2(dev);
 
     s->irq = irq;
-    s->mouse.id = 1;
-
-    s->mouse.parent = s;
 
     vmstate_register(NULL, base, &vmstate_lasips2, s);
-
-    s->mouse.dev = ps2_mouse_init(ps2dev_update_irq, &s->mouse);
 
     memory_region_add_subregion(address_space, base,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
@@ -393,6 +388,10 @@ static void lasips2_mouse_port_init(Object *obj)
 
     memory_region_init_io(&lp->reg, obj, &lasips2_reg_ops, lp,
                           "lasips2-mouse", 0x100);
+
+    lp->id = 1;
+    lp->parent = container_of(lp, LASIPS2State, mouse);
+    lp->dev = ps2_mouse_init(ps2dev_update_irq, lp);
 }
 
 static const TypeInfo lasips2_mouse_port_info = {
