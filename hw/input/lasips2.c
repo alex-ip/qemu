@@ -301,12 +301,11 @@ void lasips2_initfn(MemoryRegion *address_space,
 
     s->irq = irq;
     s->mouse.id = 1;
-    s->kbd.parent = s;
+
     s->mouse.parent = s;
 
     vmstate_register(NULL, base, &vmstate_lasips2, s);
 
-    s->kbd.dev = ps2_kbd_init(ps2dev_update_irq, &s->kbd);
     s->mouse.dev = ps2_mouse_init(ps2dev_update_irq, &s->mouse);
 
     memory_region_add_subregion(address_space, base,
@@ -375,6 +374,10 @@ static void lasips2_kbd_port_init(Object *obj)
 
     memory_region_init_io(&lp->reg, obj, &lasips2_reg_ops, lp,
                           "lasips2-kbd", 0x100);
+
+    lp->id = 0;
+    lp->parent = container_of(lp, LASIPS2State, kbd);
+    lp->dev = ps2_kbd_init(ps2dev_update_irq, lp);
 }
 
 static const TypeInfo lasips2_kbd_port_info = {
