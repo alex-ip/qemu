@@ -245,23 +245,6 @@ static void ps2dev_update_irq(void *opaque, int level)
     lasips2_update_irq(port->parent);
 }
 
-void lasips2_initfn(MemoryRegion *address_space,
-                    hwaddr base, qemu_irq irq)
-{
-    LASIPS2State *s;
-    DeviceState *dev;
-
-    dev = qdev_new(TYPE_LASIPS2);
-    qdev_set_legacy_instance_id(dev, 0xffd08000 /* LASI_PS2KBD_HPA */, 0);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
-    s = LASIPS2(dev);
-    qdev_connect_gpio_out(dev, 0, s->irq);
-
-    memory_region_add_subregion(address_space, base,
-                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
-                                                       0));
-}
-
 static void lasips2_realize(DeviceState *dev, Error **errp)
 {
     LASIPS2State *s = LASIPS2(dev);
