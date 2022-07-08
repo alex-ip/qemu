@@ -82,6 +82,7 @@ blobs = [
   'npcm7xx_bootrom.bin',
   'vof.bin',
   'vof-nvram.bin',
+  'Quadra800ROM.elf',
 ]
 
 if get_option('install_blobs')
