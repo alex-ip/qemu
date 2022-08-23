@@ -878,9 +878,9 @@ static void q800_machine_init(MachineState *machine)
         /* WIP: load netbsd-INSTALL file for symbols with executing with -d in_asm */
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, "netbsd-GENERIC");
         if (filename) {
-            load_elf(filename, NULL, NULL, NULL, &elf_entry, NULL, NULL, NULL,
-                     1, EM_68K, 0, 0);
-            fprintf(stderr, "Loaded netbsd-GENERIC symbols!\n");
+            //load_elf(filename, NULL, NULL, NULL, &elf_entry, NULL, NULL, NULL,
+            //         1, EM_68K, 0, 0);
+            //fprintf(stderr, "Loaded netbsd-GENERIC symbols!\n");
         }
         g_free(filename);
 
