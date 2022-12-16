@@ -536,14 +536,14 @@ static void make_quotient(CPUM68KState *env, floatx80 val)
 
 void HELPER(fmod)(CPUM68KState *env, FPReg *res, FPReg *val0, FPReg *val1)
 {
-    res->d = floatx80_mod(val1->d, val0->d, &env->fp_status);
+    res->d = floatx80_mod(val0->d, val1->d, &env->fp_status);
 
     make_quotient(env, res->d);
 }
 
 void HELPER(frem)(CPUM68KState *env, FPReg *res, FPReg *val0, FPReg *val1)
 {
-    res->d = floatx80_rem(val1->d, val0->d, &env->fp_status);
+    res->d = floatx80_rem(val0->d, val1->d, &env->fp_status);
 
     make_quotient(env, res->d);
 }
