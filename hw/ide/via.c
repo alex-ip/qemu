@@ -31,6 +31,7 @@
 #include "sysemu/dma.h"
 #include "hw/isa/vt82c686.h"
 #include "hw/ide/pci.h"
+#include "hw/irq.h"
 #include "trace.h"
 
 static uint64_t bmdma_read(void *opaque, hwaddr addr,
@@ -105,6 +106,8 @@ static void bmdma_setup_bar(PCIIDEState *d)
 static void via_ide_set_irq(void *opaque, int n, int level)
 {
     PCIDevice *d = PCI_DEVICE(opaque);
+    PCIIDEState *is = PCI_IDE(d);
+    bool legacy;
 
     if (level) {
         d->config[0x70 + n * 8] |= 0x80;
@@ -112,7 +115,13 @@ static void via_ide_set_irq(void *opaque, int n, int level)
         d->config[0x70 + n * 8] &= ~0x80;
     }
 
-    via_isa_set_irq(pci_get_function_0(d), 14 + n, level);
+    /* FIXME: wire up legacy IRQs */
+    legacy = !(d->config[PCI_CLASS_PROG] & (n ? BIT(2) : BIT(0)));
+    if (legacy) {
+        qemu_set_irq(is->isa_irq[n], level);
+    } else {
+        pci_set_irq(d, level);
+    }
 }
 
 static void via_ide_reset(DeviceState *dev)

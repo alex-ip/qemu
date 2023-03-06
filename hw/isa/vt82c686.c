@@ -592,10 +592,88 @@ static const TypeInfo via_isa_info = {
     },
 };
 
-void via_isa_set_irq(PCIDevice *d, int n, int level)
+/* Return the PIC IRQ for the given PCI IRQ */
+static int via_isa_get_pci_irq(const ViaISAState *s, int irq_num)
 {
-    ViaISAState *s = VIA_ISA(d);
-    qemu_set_irq(s->isa_irqs_in[n], level);
+    switch (irq_num) {
+    case 0:
+        return s->dev.config[0x55] >> 4;
+    case 1:
+        return s->dev.config[0x56] & 0xf;
+    case 2:
+        return s->dev.config[0x56] >> 4;
+    case 3:
+        return s->dev.config[0x57] >> 4;
+    }
+    return 0;
+}
+
+static void via_isa_set_irq(void *opaque, int pic_irq, int level)
+{
+    ViaISAState *s = VIA_ISA(opaque);
+    PCIBus *bus = pci_get_bus(&s->dev);
+    int i, pic_level;
+
+    /* Nothing to do */
+    if (!pic_irq) {
+        return;
+    }
+
+    /* The pic level is the logical OR of all the PCI irqs mapped to it. */
+    pic_level = 0;
+    for (i = 0; i < PCI_NUM_PINS; i++) {
+        if (pic_irq == via_isa_get_pci_irq(s, i)) {
+            pic_level |= pci_bus_get_irq_level(bus, i);
+        }
+    }
+
+    /* Now we change the pic irq level according to the via irq mappings. */
+    qemu_set_irq(s->isa_irqs_in[pic_irq], pic_level);
+}
+
+static int via_isa_map_irq(PCIDevice *pci_dev, int irq_num)
+{
+    int slot = PCI_SLOT(pci_dev->devfn);
+    switch (slot) {
+    case 0:
+        {
+            /* VIA IDE, USB, ACPI, AC97, MC97 */
+            int fn = PCI_FUNC(pci_dev->devfn);
+            switch (fn) {
+            case 1:
+                {
+                    /* Function 1: IDE */
+                    return 14;
+                }
+            case 2:
+            case 3:
+                {
+                    /* Functions 2-3: USB Ports */
+                    return pci_dev->config[PCI_INTERRUPT_LINE];
+                }
+            case 4:
+            case 5:
+            case 6:
+                {
+                    /* FIXME: Nothing to do (yet?) */
+                    return 0;
+                }
+            default:
+                g_assert_not_reached();
+            }
+            break;
+        }
+
+    default:
+        {
+            /* All other PCI devices */
+            PCIBus *pci_bus = pci_get_bus(pci_dev);
+            /* FIXME: I think VIAISAState (PCI-ISA bridge) can only be in slot 0? */
+            ViaISAState *s = VIA_ISA(pci_find_device(pci_bus, 0, PCI_DEVFN(0, 0)));
+
+            return via_isa_get_pci_irq(s, irq_num);
+        }
+    }
 }
 
 static void via_isa_realize(PCIDevice *d, Error **errp)
@@ -668,6 +746,10 @@ static void via_isa_realize(PCIDevice *d, Error **errp)
     if (!qdev_realize(DEVICE(&s->mc97), BUS(pci_bus), errp)) {
         return;
     }
+
+    /* FIXME: should pci_bus be defined here using pci_register_root_bus()? */
+    pci_bus_irqs(pci_bus, via_isa_set_irq, s, PCI_NUM_PINS);
+    pci_bus_map_irqs(pci_bus, via_isa_map_irq);
 }
 
 /* TYPE_VT82C686B_ISA */

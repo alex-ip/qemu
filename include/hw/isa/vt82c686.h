@@ -9,6 +9,4 @@
 #define TYPE_VIA_IDE "via-ide"
 #define TYPE_VIA_MC97 "via-mc97"
 
-void via_isa_set_irq(PCIDevice *d, int n, int level);
-
 #endif
