@@ -129,4 +129,7 @@ int isa_register_portio_list(ISADevice *dev,
                              const MemoryRegionPortio *portio,
                              void *opaque, const char *name);
 
+int isa_unregister_portio_list(ISADevice *dev, PortioList *piolist,
+                               uint16_t start);
+
 #endif

@@ -146,6 +146,24 @@ int isa_register_portio_list(ISADevice *dev,
     return 0;
 }
 
+int isa_unregister_portio_list(ISADevice *dev, PortioList *piolist,
+                               uint16_t start)
+{
+    assert(piolist && !piolist->owner);
+
+    if (OBJECT(dev) != piolist->owner) {
+        return -ENODEV;
+    }
+
+    portio_list_destroy(piolist);
+
+    if (dev->ioport_id == start) {
+        dev->ioport_id = 0;
+    }
+
+    return 0;
+}
+
 ISADevice *isa_new(const char *name)
 {
     return ISA_DEVICE(qdev_new(name));
