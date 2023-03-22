@@ -56,3 +56,13 @@ int ide_init_ioport(IDEBus *bus, ISADevice *dev, int iobase, int iobase2)
 
     return ret;
 }
+
+int ide_destroy_ioport(IDEBus *bus, ISADevice *dev, int iobase, int iobase2)
+{
+    int ret = 0;
+
+    ret |= isa_unregister_portio_list(dev, &bus->portio2_list, iobase2);
+    ret |= isa_unregister_portio_list(dev, &bus->portio_list, iobase);
+
+    return ret;
+}
