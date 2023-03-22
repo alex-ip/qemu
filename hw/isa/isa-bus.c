@@ -151,13 +151,14 @@ int isa_unregister_portio_list(ISADevice *dev, PortioList *piolist,
 {
     assert(piolist && !piolist->owner);
 
-    if (OBJECT(dev) != piolist->owner) {
+    if (dev && (OBJECT(dev) != piolist->owner)) {
         return -ENODEV;
     }
 
+    portio_list_del(piolist);
     portio_list_destroy(piolist);
 
-    if (dev->ioport_id == start) {
+    if (dev && (dev->ioport_id == start)) {
         dev->ioport_id = 0;
     }
 
