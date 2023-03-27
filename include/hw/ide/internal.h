@@ -618,7 +618,6 @@ int ide_init_drive(IDEState *s, BlockBackend *blk, IDEDriveKind kind,
                    int chs_trans, Error **errp);
 void ide_exit(IDEState *s);
 void ide_bus_init_output_irq(IDEBus *bus, qemu_irq irq_out);
-int ide_init_ioport(IDEBus *bus, ISADevice *isa, int iobase, int iobase2);
 void ide_bus_set_irq(IDEBus *bus);
 void ide_bus_register_restart_cb(IDEBus *bus);
 
@@ -637,6 +636,11 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
                                QEMUIOVector *iov, int nb_sectors,
                                BlockCompletionFunc *cb, void *opaque);
 void ide_cancel_dma_sync(IDEState *s);
+
+/* hw/ide/ioport.c */
+extern const MemoryRegionPortio ide_portio_list[];
+extern const MemoryRegionPortio ide_portio2_list[];
+int ide_init_ioport(IDEBus *bus, ISADevice *isa, int iobase, int iobase2);
 
 /* hw/ide/atapi.c */
 void ide_atapi_cmd(IDEState *s);
