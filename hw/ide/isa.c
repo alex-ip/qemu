@@ -54,6 +54,21 @@ static void isa_ide_reset(DeviceState *d)
     ide_bus_reset(&s->bus);
 }
 
+static void isa_ide_init_ioport(ISADevice *isadev)
+{
+    ISAIDEState *s = ISA_IDE(isadev);
+
+    /*
+     * ??? Assume only ISA and PCI configurations, and that the PCI-ISA
+     * bridge has been setup properly to always register with ISA.
+     */
+    isa_register_portio_list(isadev, &s->bus.portio_list,
+                             s->iobase, ide_portio_list, &s->bus, "ide");
+
+    isa_register_portio_list(isadev, &s->bus.portio2_list,
+                             s->iobase2, ide_portio2_list, &s->bus, "ide");
+}
+
 static const VMStateDescription vmstate_ide_isa = {
     .name = "isa-ide",
     .version_id = 3,
@@ -71,7 +86,7 @@ static void isa_ide_realizefn(DeviceState *dev, Error **errp)
     ISAIDEState *s = ISA_IDE(dev);
 
     ide_bus_init(&s->bus, sizeof(s->bus), dev, 0, 2);
-    ide_init_ioport(&s->bus, isadev, s->iobase, s->iobase2);
+    isa_ide_init_ioport(isadev);
     ide_bus_init_output_irq(&s->bus, isa_get_irq(isadev, s->irqnum));
     vmstate_register(VMSTATE_IF(dev), 0, &vmstate_ide_isa, s);
     ide_bus_register_restart_cb(&s->bus);
