@@ -120,6 +120,15 @@ void pci_ide_register_legacy_ioports(PCIIDEState *d, IDEBus *bus, int iobase,
                     iobase2);
 }
 
+void pci_ide_unregister_legacy_ioports(PCIIDEState *d, IDEBus *bus)
+{
+    portio_list_del(&bus->portio_list);
+    portio_list_destroy(&bus->portio_list);
+
+    portio_list_del(&bus->portio2_list);
+    portio_list_destroy(&bus->portio2_list);
+}
+
 static IDEState *bmdma_active_if(BMDMAState *bmdma)
 {
     assert(bmdma->bus->retry_unit != (uint8_t)-1);
