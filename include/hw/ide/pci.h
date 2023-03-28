@@ -60,6 +60,9 @@ void bmdma_init(IDEBus *bus, BMDMAState *bm, PCIIDEState *d);
 void bmdma_cmd_writeb(BMDMAState *bm, uint32_t val);
 extern MemoryRegionOps bmdma_addr_ioport_ops;
 void pci_ide_create_devs(PCIDevice *dev);
+void pci_ide_register_legacy_ioports(PCIIDEState *d, IDEBus *bus, int iobase,
+                                     int iobase2);
+void pci_ide_unregister_legacy_ioports(PCIIDEState *d);
 
 extern const VMStateDescription vmstate_ide_pci;
 extern const MemoryRegionOps pci_ide_cmd_le_ops;

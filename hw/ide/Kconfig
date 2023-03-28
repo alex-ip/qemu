@@ -12,6 +12,7 @@ config IDE_PCI
     bool
     depends on PCI
     select IDE_QDEV
+    select IDE_IOPORT
 
 config IDE_ISA
     bool

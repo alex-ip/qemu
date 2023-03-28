@@ -104,6 +104,22 @@ const MemoryRegionOps pci_ide_data_le_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+void pci_ide_register_legacy_ioports(PCIIDEState *d, IDEBus *bus, int iobase,
+                                     int iobase2)
+{
+    portio_list_init(&bus->portio_list, OBJECT(d), ide_portio_list,
+                     bus, "ide");
+    portio_list_add(&bus->portio_list,
+                    pci_address_space_io(PCI_DEVICE(d)),
+                    iobase);
+
+    portio_list_init(&bus->portio2_list, OBJECT(d), ide_portio2_list,
+                     bus, "ide");
+    portio_list_add(&bus->portio2_list,
+                    pci_address_space_io(PCI_DEVICE(d)),
+                    iobase2);
+}
+
 static IDEState *bmdma_active_if(BMDMAState *bmdma)
 {
     assert(bmdma->bus->retry_unit != (uint8_t)-1);
