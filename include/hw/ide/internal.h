@@ -640,7 +640,6 @@ void ide_cancel_dma_sync(IDEState *s);
 /* hw/ide/ioport.c */
 extern const MemoryRegionPortio ide_portio_list[];
 extern const MemoryRegionPortio ide_portio2_list[];
-int ide_init_ioport(IDEBus *bus, ISADevice *isa, int iobase, int iobase2);
 
 /* hw/ide/atapi.c */
 void ide_atapi_cmd(IDEState *s);
