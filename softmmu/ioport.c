@@ -151,9 +151,7 @@ void portio_list_destroy(PortioList *piolist)
 
     for (i = 0; i < piolist->nr; ++i) {
         mrpio = container_of(piolist->regions[i], MemoryRegionPortioList, mr);
-        object_unparent(OBJECT(&mrpio->mr));
-        g_free(mrpio->ports);
-        g_free(mrpio);
+        object_unref(OBJECT(mrpio));
     }
     g_free(piolist->regions);
 }
@@ -240,13 +238,15 @@ static void portio_list_add_1(PortioList *piolist,
     memcpy(mrpio->ports, pio_init, sizeof(MemoryRegionPortio) * count);
     memset(mrpio->ports + count, 0, sizeof(MemoryRegionPortio));
 
+    object_property_add_child(piolist->owner, "portiolist[*]", OBJECT(mrpio));
+
     /* Adjust the offsets to all be zero-based for the region.  */
     for (i = 0; i < count; ++i) {
         mrpio->ports[i].offset -= off_low;
         mrpio->ports[i].base = start + off_low;
     }
 
-    memory_region_init_io(&mrpio->mr, piolist->owner, &portio_ops, mrpio,
+    memory_region_init_io(&mrpio->mr, OBJECT(mrpio), &portio_ops, mrpio,
                           piolist->name, off_high - off_low);
     if (piolist->flush_coalesced_mmio) {
         memory_region_set_flush_coalesced(&mrpio->mr);
@@ -305,10 +305,19 @@ void portio_list_del(PortioList *piolist)
     }
 }
 
+static void memory_region_portio_list_finalize(Object *obj)
+{
+    MemoryRegionPortioList *mrpio = MEMORY_REGION_PORTIO_LIST(obj);
+
+    object_unparent(OBJECT(&mrpio->mr));
+    g_free(mrpio->ports);
+}
+
 static const TypeInfo memory_region_portio_list_info = {
     .parent             = TYPE_OBJECT,
     .name               = TYPE_MEMORY_REGION_PORTIO_LIST,
     .instance_size      = sizeof(MemoryRegionPortioList),
+    .instance_finalize  = memory_region_portio_list_finalize,
 };
 
 static void ioport_register_types(void)
