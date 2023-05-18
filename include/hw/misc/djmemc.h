@@ -1,5 +1,6 @@
 /*
- * QEMU Motorla 680x0 Macintosh hardware System Emulator
+ * djMEMC, macintosh memory and interrupt controller
+ * (Quadra 610/650/800 & Centris 610/650)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,49 +21,26 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_Q800_H
-#define HW_Q800_H
+#ifndef HW_MISC_DJMEMC_H
+#define HW_MISC_DJMEMC_H
 
-#include "hw/boards.h"
-#include "qom/object.h"
-#include "target/m68k/cpu-qom.h"
-#include "exec/memory.h"
-#include "hw/m68k/q800-glue.h"
-#include "hw/misc/mac_via.h"
-#include "hw/net/dp8393x.h"
-#include "hw/char/escc.h"
-#include "hw/or-irq.h"
-#include "hw/scsi/esp.h"
-#include "hw/block/swim.h"
-#include "hw/nubus/mac-nubus-bridge.h"
-#include "hw/display/macfb.h"
-#include "hw/misc/djmemc.h"
+#include "hw/sysbus.h"
 
-/*
- * The main Q800 machine
- */
+#define DJMEMC_SIZE        0x2000
+#define DJMEMC_NUM_REGS    (0x38 / sizeof(uint32_t))
 
-struct Q800MachineState {
-    MachineState parent_obj;
+#define DJMEMC_MAXBANKS    10
 
-    M68kCPU cpu;
-    MemoryRegion rom;
-    GLUEState glue;
-    MOS6522Q800VIA1State via1;
-    MOS6522Q800VIA2State via2;
-    dp8393xState dp8393x;
-    ESCCState escc;
-    OrIRQState escc_orgate;
-    SysBusESPState esp;
-    Swim swim;
-    MacNubusBridge mac_nubus_bridge;
-    MacfbNubusState macfb;
-    DJMEMCState djmemc;
-    MemoryRegion macio;
-    MemoryRegion macio_alias;
+struct DJMEMCState {
+    SysBusDevice parent_obj;
+
+    MemoryRegion mem_regs;
+
+    /* Memory controller */
+    uint32_t regs[DJMEMC_NUM_REGS];
 };
 
-#define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
-OBJECT_DECLARE_SIMPLE_TYPE(Q800MachineState, Q800_MACHINE)
+#define TYPE_DJMEMC "djMEMC"
+OBJECT_DECLARE_SIMPLE_TYPE(DJMEMCState, DJMEMC);
 
 #endif
