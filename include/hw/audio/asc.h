@@ -61,6 +61,7 @@ struct ASCState {
     uint8_t *mixbuf;
     int samples;
     int shift;
+    uint32_t flush_zero_samples;
 
     qemu_irq irq;
 

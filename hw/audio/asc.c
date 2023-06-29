@@ -150,6 +150,32 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
     return val;
 }
 
+static int generate_silence(ASCState *s, int maxsamples)
+{
+    uint8_t *buf = s->mixbuf;
+
+    fprintf(stderr, "generate silence! maxsamples: %d, flush_zero_samples: %d\n", maxsamples, s->flush_zero_samples);
+
+    if (s->flush_zero_samples) {
+        memset(buf, 0x80, maxsamples << s->shift);
+        s->flush_zero_samples -= MIN(maxsamples, s->flush_zero_samples);
+
+        if (s->flush_zero_samples == 0 &&
+            (s->regs[ASC_MODE] & 3) == 0) {
+
+            fprintf(stderr, "#### VO REALLY OFF\n");
+            AUD_set_active_out(s->voice, 0);
+        }
+
+        fprintf(stderr, "SILENCE, flush_zero_samples now %d\n", s->flush_zero_samples);
+        return maxsamples;
+    } else {
+        fprintf(stderr, "FLUSHED, NOOP\n");
+    }
+
+    return 0;
+}
+
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     uint8_t *buf = s->mixbuf;
@@ -170,7 +196,11 @@ static int generate_fifo(ASCState *s, int maxsamples)
         s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                   ASC_FIFO_STATUS_FULL_EMPTY;
 
-        memset(buf, 0x80, maxsamples << s->shift);
+        if (s->flush_zero_samples == 0) {
+            s->flush_zero_samples = s->samples;
+        }
+
+        generate_silence(s, maxsamples);
         asc_raise_irq(s);
         return maxsamples;
     }
@@ -305,18 +335,21 @@ static void asc_out_cb(void *opaque, int free_b)
     ASCState *s = opaque;
     int samples;
 
-    samples = MIN(s->samples, free_b >> s->shift);
-    if (!samples) {
+    if (free_b == 0) {
         return;
     }
+
+    samples = MIN(s->samples, free_b >> s->shift);
 
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = 0;
+        fprintf(stderr, "-> OFF\n");
+        samples = generate_silence(s, samples);
         break;
     case 1:
         /* FIFO mode */
+        fprintf(stderr, "-> FIFO\n");
         samples = generate_fifo(s, samples);
         break;
     case 2:
@@ -441,8 +474,10 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
             asc_lower_irq(s);
             if (value != 0) {
                 AUD_set_active_out(s->voice, 1);
+                s->flush_zero_samples = 0;
             } else {
-                AUD_set_active_out(s->voice, 0);
+                fprintf(stderr, "##### VO!\n");
+                s->flush_zero_samples = s->samples;
             }
         }
         break;
