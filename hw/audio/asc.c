@@ -160,13 +160,6 @@ static int generate_silence(ASCState *s, int maxsamples)
         memset(buf, 0x80, maxsamples << s->shift);
         s->flush_zero_samples -= MIN(maxsamples, s->flush_zero_samples);
 
-        if (s->flush_zero_samples == 0 &&
-            (s->regs[ASC_MODE] & 3) == 0) {
-
-            fprintf(stderr, "#### VO REALLY OFF\n");
-            AUD_set_active_out(s->voice, 0);
-        }
-
         fprintf(stderr, "SILENCE, flush_zero_samples now %d\n", s->flush_zero_samples);
         return maxsamples;
     } else {
@@ -189,12 +182,13 @@ static int generate_fifo(ASCState *s, int maxsamples)
      * all-zero output when no data is provided, zero out the sample buffer
      * and then update the FIFO flags and IRQ as normal and continue
      */
-    if (limit == 0 && s->fifos[0].int_status == 0 &&
-            s->fifos[1].int_status == 0) {
-        s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
-                                  ASC_FIFO_STATUS_FULL_EMPTY;
-        s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
-                                  ASC_FIFO_STATUS_FULL_EMPTY;
+    if (limit == 0) {
+        if (s->fifos[0].int_status == 0 && s->fifos[1].int_status == 0) {
+            s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+            s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+        }
 
         if (s->flush_zero_samples == 0) {
             s->flush_zero_samples = s->samples;
@@ -476,8 +470,7 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
                 AUD_set_active_out(s->voice, 1);
                 s->flush_zero_samples = 0;
             } else {
-                fprintf(stderr, "##### VO!\n");
-                s->flush_zero_samples = s->samples;
+                AUD_set_active_out(s->voice, 0);
             }
         }
         break;
