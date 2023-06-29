@@ -176,7 +176,7 @@ fail:
     return false;
 }
 #endif /* WIN32 */
-
+#if 0
 static void dbus_update_gl_cb(GObject *source_object,
                               GAsyncResult *res,
                               gpointer user_data)
@@ -203,11 +203,11 @@ static void dbus_update_gl_cb(GObject *source_object,
     graphic_hw_gl_block(ddl->dcl.con, false);
     g_object_unref(ddl);
 }
-
+#endif
 static void dbus_call_update_gl(DisplayChangeListener *dcl,
                                 int x, int y, int w, int h)
 {
-    DBusDisplayListener *ddl = container_of(dcl, DBusDisplayListener, dcl);
+    //DBusDisplayListener *ddl = container_of(dcl, DBusDisplayListener, dcl);
 
     trace_dbus_update_gl(x, y, w, h);
 
