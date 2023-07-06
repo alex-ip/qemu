@@ -12,6 +12,7 @@ config NEXTCUBE
     bool
     select FRAMEBUFFER
     select ESCC
+    select ESP
 
 config Q800
     bool
