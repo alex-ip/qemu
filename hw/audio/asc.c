@@ -148,26 +148,12 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
     return val;
 }
 
-static int generate_silence(ASCState *s, int maxsamples)
-{
-    uint8_t *buf = s->mixbuf;
-
-    if (s->flush_zero_samples) {
-        memset(buf, 0x80, maxsamples << s->shift);
-        s->flush_zero_samples -= MIN(maxsamples, s->flush_zero_samples);
-
-        return maxsamples;
-    }
-
-    return 0;
-}
-
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     uint8_t *buf = s->mixbuf;
-    int i, limit, count = 0;
+    int i, avail, count = 0;
 
-    limit = MIN(MAX(s->fifos[0].cnt, s->fifos[1].cnt), maxsamples);
+    avail = MAX(s->fifos[0].cnt, s->fifos[1].cnt);
 
     /*
      * MacOS (un)helpfully leaves the FIFO engine running even when it has
@@ -175,24 +161,17 @@ static int generate_fifo(ASCState *s, int maxsamples)
      * all-zero output when no data is provided, zero out the sample buffer
      * and then update the FIFO flags and IRQ as normal and continue
      */
-    if (limit == 0) {
+    if (avail == 0) {
         if (s->fifos[0].int_status == 0 && s->fifos[1].int_status == 0) {
             s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                       ASC_FIFO_STATUS_FULL_EMPTY;
             s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                       ASC_FIFO_STATUS_FULL_EMPTY;
+            asc_raise_irq(s);
         }
-
-        if (s->flush_zero_samples == 0) {
-            s->flush_zero_samples = s->samples;
-        }
-
-        generate_silence(s, maxsamples);
-        asc_raise_irq(s);
-        return maxsamples;
     }
 
-    while (count < limit) {
+    while (count < maxsamples) {
         uint8_t val;
         int16_t d, f0, f1;
         int32_t t;
@@ -202,73 +181,73 @@ static int generate_fifo(ASCState *s, int maxsamples)
         for (i = 0; i < 2; i++) {
             ASCFIFOState *fs = &s->fifos[i];
 
-            switch (fs->extregs[ASC_EXTREGS_FIFOCTRL] & 0x83) {
-            case 0x82:
-                /*
-                 * CD-XA BRR mode: exit if there isn't enough data in the FIFO
-                 * for a complete 15 byte packet
-                 */
-                if (fs->xa_cnt == -1 && fs->cnt < 15) {
-                    hasdata = false;
-                    continue;
-                }
+            if (fs->cnt == 0) {
+                /* No data, so generate silence */
+                val = 0x80;
+            } else {
+                switch (fs->extregs[ASC_EXTREGS_FIFOCTRL] & 0x83) {
+                case 0x82:
+                    /*
+                     * CD-XA BRR mode: exit if there isn't enough data in the
+                     * FIFO for a complete 15 byte packet
+                     */
+                    if (fs->xa_cnt == -1 && fs->cnt < 15) {
+                        hasdata = false;
+                        continue;
+                    }
 
-                if (fs->xa_cnt == -1) {
-                    /* Start of packet, get flags */
-                    fs->xa_flags = asc_fifo_get(fs);
-                    fs->xa_cnt = 0;
-                }
+                    if (fs->xa_cnt == -1) {
+                        /* Start of packet, get flags */
+                        fs->xa_flags = asc_fifo_get(fs);
+                        fs->xa_cnt = 0;
+                    }
 
-                shift = fs->xa_flags & 0xf;
-                filter = fs->xa_flags >> 4;
-                f0 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
-                                 (filter << 1) + 1];
-                f1 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
-                                 (filter << 1)];
-                if ((fs->xa_cnt & 1) == 0) {
-                    fs->xa_val = asc_fifo_get(fs);
-                    d = (fs->xa_val & 0xf) << 12;
-                } else {
-                    d = (fs->xa_val & 0xf0) << 8;
-                }
-                t = (d >> shift) + (((fs->xa_last[0] * f0) +
-                                     (fs->xa_last[1] * f1) + 32) >> 6);
-                if (t < -32768) {
-                    t = -32768;
-                } else if (t > 32768) {
-                    t = 32768;
-                }
+                    shift = fs->xa_flags & 0xf;
+                    filter = fs->xa_flags >> 4;
+                    f0 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
+                                        (filter << 1) + 1];
+                    f1 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
+                                        (filter << 1)];
+                    if ((fs->xa_cnt & 1) == 0) {
+                        fs->xa_val = asc_fifo_get(fs);
+                        d = (fs->xa_val & 0xf) << 12;
+                    } else {
+                        d = (fs->xa_val & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((fs->xa_last[0] * f0) +
+                                            (fs->xa_last[1] * f1) + 32) >> 6);
+                    if (t < -32768) {
+                        t = -32768;
+                    } else if (t > 32768) {
+                        t = 32768;
+                    }
 
-                /*
-                 * CD-XA BRR generates 16-bit signed output, so convert to
-                 * 8-bit before writing to buffer. Does real hardware do the
-                 * same?
-                 */
-                buf[count * 2 + i] = (uint8_t)(t / 256) ^ 0x80;
-                fs->xa_cnt++;
+                    /*
+                    * CD-XA BRR generates 16-bit signed output, so convert to
+                    * 8-bit before writing to buffer. Does real hardware do the
+                    * same?
+                    */
+                    val = (uint8_t)(t / 256) ^ 0x80;
+                    fs->xa_cnt++;
 
-                fs->xa_last[1] = fs->xa_last[0];
-                fs->xa_last[0] = (int16_t)t;
+                    fs->xa_last[1] = fs->xa_last[0];
+                    fs->xa_last[0] = (int16_t)t;
 
-                if (fs->xa_cnt == 28) {
-                    /* End of packet */
-                    fs->xa_cnt = -1;
-                }
-                break;
-
-            default:
-                /* fallthrough */
-            case 0x80:
-                /* Raw mode */
-                if (fs->cnt) {
+                    if (fs->xa_cnt == 28) {
+                        /* End of packet */
+                        fs->xa_cnt = -1;
+                    }
+                    break;
+                default:
+                    /* fallthrough */
+                case 0x80:
+                    /* Raw mode */
                     val = asc_fifo_get(fs);
-                } else {
-                    val = 0x80;
+                    break;
                 }
-
-                buf[count * 2 + i] = val;
-                break;
             }
+
+            buf[count * 2 + i] = val;
         }
 
         if (!hasdata) {
@@ -331,7 +310,7 @@ static void asc_out_cb(void *opaque, int free_b)
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = generate_silence(s, samples);
+        samples = 0;
         break;
     case 1:
         /* FIFO mode */
@@ -459,7 +438,6 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
             asc_lower_irq(s);
             if (value != 0) {
                 AUD_set_active_out(s->voice, 1);
-                s->flush_zero_samples = 0;
             } else {
                 AUD_set_active_out(s->voice, 0);
             }
