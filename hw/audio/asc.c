@@ -148,20 +148,6 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
     return val;
 }
 
-static int generate_silence(ASCState *s, int maxsamples)
-{
-    uint8_t *buf = s->mixbuf;
-
-    if (s->flush_zero_samples) {
-        memset(buf, 0x80, maxsamples << s->shift);
-        s->flush_zero_samples -= MIN(maxsamples, s->flush_zero_samples);
-
-        return maxsamples;
-    }
-
-    return 0;
-}
-
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     uint8_t *buf = s->mixbuf;
@@ -181,15 +167,8 @@ static int generate_fifo(ASCState *s, int maxsamples)
                                       ASC_FIFO_STATUS_FULL_EMPTY;
             s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                       ASC_FIFO_STATUS_FULL_EMPTY;
+            asc_raise_irq(s);
         }
-
-        if (s->flush_zero_samples == 0) {
-            s->flush_zero_samples = s->samples;
-        }
-
-        generate_silence(s, maxsamples);
-        asc_raise_irq(s);
-        return maxsamples;
     }
 
     while (count < limit) {
@@ -331,7 +310,7 @@ static void asc_out_cb(void *opaque, int free_b)
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = generate_silence(s, samples);
+        samples = 0;
         break;
     case 1:
         /* FIFO mode */
@@ -459,7 +438,6 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
             asc_lower_irq(s);
             if (value != 0) {
                 AUD_set_active_out(s->voice, 1);
-                s->flush_zero_samples = 0;
             } else {
                 AUD_set_active_out(s->voice, 0);
             }
