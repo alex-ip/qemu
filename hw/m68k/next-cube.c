@@ -74,7 +74,6 @@ struct NeXTState {
     MachineState parent;
 
     next_dma dma[10];
-    qemu_irq *scsi_irq;
     qemu_irq scsi_reset;
     qemu_irq scsi_dma;
 };
@@ -900,12 +899,6 @@ static void nextscsi_write(void *opaque, uint8_t *buf, int size)
     nextdma_write(opaque, buf, size, NEXTDMA_SCSI);
 }
 
-static void nextscsi_irq(void *opaque, int n, int level)
-{
-    /* DPRINTF("SCSI IRQ NUM %p %i %i\n", opaque, n, level); */
-    next_irq(opaque, NEXT_SCSI_I, level);
-}
-
 static void next_scsi_init(DeviceState *pcdev, M68kCPU *cpu)
 {
     NeXTState *next_state = NEXT_MACHINE(qdev_get_machine());
@@ -913,8 +906,6 @@ static void next_scsi_init(DeviceState *pcdev, M68kCPU *cpu)
     SysBusDevice *sysbusdev;
     SysBusESPState *sysbus_esp;
     ESPState *esp;
-
-    next_state->scsi_irq = qemu_allocate_irqs(nextscsi_irq, pcdev, 1);
 
     dev = qdev_new(TYPE_SYSBUS_ESP);
     sysbus_esp = SYSBUS_ESP(dev);
@@ -926,7 +917,7 @@ static void next_scsi_init(DeviceState *pcdev, M68kCPU *cpu)
     esp->dma_enabled = 1;
     sysbusdev = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(sysbusdev, &error_fatal);
-    sysbus_connect_irq(sysbusdev, 0, next_state->scsi_irq[0]);
+    sysbus_connect_irq(sysbusdev, 0, qdev_get_gpio_in(pcdev, NEXT_SCSI_I));
     sysbus_mmio_map(sysbusdev, 0, 0x2114000);
 
     next_state->scsi_reset = qdev_get_gpio_in(dev, 0);
