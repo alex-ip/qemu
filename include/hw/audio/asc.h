@@ -14,6 +14,7 @@
 #define HW_AUDIO_ASC_H
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "hw/sysbus.h"
 #include "audio/audio.h"
 
@@ -37,7 +38,8 @@ typedef struct ASCFIFOState {
     MemoryRegion mem_fifo;
     uint8_t fifo[ASC_FIFO_SIZE];
     uint8_t int_status;
-
+    int64_t empty_time_ns;
+    
     int cnt;
     int wptr;
     int rptr;
