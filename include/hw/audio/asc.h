@@ -39,7 +39,8 @@ typedef struct ASCFIFOState {
     uint8_t fifo[ASC_FIFO_SIZE];
     uint8_t int_status;
     int64_t empty_time_ns;
-    
+    QEMUTimer *fifo_cycle_timer;
+
     int cnt;
     int wptr;
     int rptr;
