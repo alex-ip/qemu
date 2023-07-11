@@ -38,8 +38,6 @@ typedef struct ASCFIFOState {
     MemoryRegion mem_fifo;
     uint8_t fifo[ASC_FIFO_SIZE];
     uint8_t int_status;
-    int64_t empty_time_ns;
-    QEMUTimer *fifo_cycle_timer;
 
     int cnt;
     int wptr;
@@ -68,6 +66,7 @@ struct ASCState {
     uint8_t *mixbuf;
     int samples;
     int shift;
+    int64_t fifo_empty_cycle_ns;
 
     qemu_irq irq;
 
