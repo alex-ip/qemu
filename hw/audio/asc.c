@@ -112,11 +112,10 @@ static void asc_lower_irq(ASCState *s)
 {
     qemu_set_irq(s->irq, 0);
 }
-
+#if 0
 static void asc_fifo_timer(void *opaque)
 {
-    ASCFIFOState *fs = opaque;
-    ASCState *s = container_of(fs, ASCState, fifos[fs->index]);
+    ASCState *s = ASC(opaque);
 
     /*
      * MacOS (un)helpfully leaves the FIFO engine running even when it has
@@ -124,14 +123,22 @@ static void asc_fifo_timer(void *opaque)
      * all-zero output when no data is provided, zero out the sample buffer
      * and then update the FIFO flags and IRQ as normal and continue
      */
-    if (fs->cnt == 0) {
-        fs->int_status |= ASC_FIFO_STATUS_HALF_FULL |
-                          ASC_FIFO_STATUS_FULL_EMPTY;
-        asc_raise_irq(s);
-        fprintf(stderr, "#### FOOF %d!\n", fs->index);
-    }
-}
+    //if (fs->cnt == 0) {
+    //    fs->int_status |= ASC_FIFO_STATUS_HALF_FULL |
+    //                      ASC_FIFO_STATUS_FULL_EMPTY;
+    //    asc_raise_irq(s);
+    
+    
+    s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                              ASC_FIFO_STATUS_FULL_EMPTY;
+    s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                              ASC_FIFO_STATUS_FULL_EMPTY;
+    asc_raise_irq(s);
 
+        fprintf(stderr, "#### FOOF %d!\n", 0);
+    //}
+}
+#endif
 static uint8_t asc_fifo_get(ASCFIFOState *fs)
 {
     ASCState *s = container_of(fs, ASCState, fifos[fs->index]);
@@ -164,10 +171,6 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
         /* Raise FIFO empty IRQ */
         fs->int_status |= ASC_FIFO_STATUS_FULL_EMPTY;
         asc_raise_irq(s);
-
-        timer_mod(fs->fifo_cycle_timer,
-                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                  ASC_FIFO_CYCLE_TIME);
     }
 
     return val;
@@ -177,22 +180,6 @@ static int generate_fifo(ASCState *s, int maxsamples)
 {
     uint8_t *buf = s->mixbuf;
     int i, limit, count = 0;
-
-    for (i = 0; i < 2; i++) {
-        ASCFIFOState *fs = &s->fifos[i];
-
-        if (fs->cnt == 0) {
-            if (timer_expire_time_ns(fs->fifo_cycle_timer) == -1) {
-                timer_mod(fs->fifo_cycle_timer,
-                            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                            ASC_FIFO_CYCLE_TIME);
-            } else {
-                memset(buf, 0x80, maxsamples << s->shift);
-                fprintf(stderr, "--> SILENCE\n");
-                return maxsamples;
-            }
-        }
-    }
     
     limit = MIN(MAX(s->fifos[0].cnt, s->fifos[1].cnt), maxsamples);
     while (count < limit) {
@@ -322,7 +309,7 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 
 static void asc_out_cb(void *opaque, int free_b)
 {
-    ASCState *s = opaque;
+    ASCState *s = ASC(opaque);
     int samples;
 
     if (free_b == 0) {
@@ -347,7 +334,52 @@ static void asc_out_cb(void *opaque, int free_b)
     }
 
     if (!samples) {
-        return;
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        int64_t expire = s->fifo_empty_cycle_ns;
+
+        if (expire < 0) {
+            /* Start timer to wait for one complete FIFO cycle */
+            fprintf(stderr, "--- START TIMER\n");
+            s->fifo_empty_cycle_ns = now + ASC_FIFO_CYCLE_TIME;
+            memset(s->mixbuf, 0x80, s->samples << s->shift);
+            return;
+        }
+
+        if (now < expire) {
+            /* Still waiting for FIFO cycle to finish */
+            fprintf(stderr, "<<< waiting\n");
+            return;
+        } else {
+#if 0
+            int j, t = 0;
+            uint32_t *p;
+#endif       
+            /* FIFO cycle expired: no data available, so generate silence */
+            fprintf(stderr, "--- silence\n");
+            samples = s->samples;
+#if 0
+            for (j = 0; j < 0x400; j += 4) {
+                p = (uint32_t *)&s->mixbuf[j];
+                if (*p == 0x80808080) {
+                    t += 4;
+                } else {
+                    fprintf(stderr, "   ::: mismatch at %d, 0x%x\n", j, *p);
+                }
+            }
+
+            assert(t == 0x400);
+#endif            
+            s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+            s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+            asc_raise_irq(s);
+
+            /* Check again after next complete FIFO cycle */
+            s->fifo_empty_cycle_ns = now + ASC_FIFO_CYCLE_TIME;
+        }
+    } else {
+        fprintf(stderr, ">>> DATA %d\n", samples);
     }
 
     AUD_write(s->voice, s->mixbuf, samples << s->shift);
@@ -398,7 +430,8 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
         fs->fifo[addr] = value;
     }
 
-    timer_del(fs->fifo_cycle_timer);
+    /* New data has arrived, so stop timer */
+    s->fifo_empty_cycle_ns = -1;
     return;
 }
 
@@ -611,6 +644,7 @@ static void asc_reset_hold(Object *obj)
     memset(s->regs, 0, sizeof(s->regs));
     asc_fifo_reset(&s->fifos[0]);
     asc_fifo_reset(&s->fifos[1]);
+    s->fifo_empty_cycle_ns = -1;
 
     if (s->type == ASC_TYPE_ASC) {
         /* FIFO half full IRQs enabled by default */
@@ -654,11 +688,6 @@ static void asc_realize(DeviceState *dev, Error **errp)
                                     ASC_EXTREG_OFFSET + ASC_EXTREG_SIZE,
                                     &s->fifos[1].mem_extregs);
     }
-
-    s->fifos[0].fifo_cycle_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
-                                                asc_fifo_timer, &s->fifos[0]);
-    s->fifos[1].fifo_cycle_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
-                                                asc_fifo_timer, &s->fifos[1]);
 }
 
 static void asc_init(Object *obj)
