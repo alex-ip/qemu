@@ -310,7 +310,8 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 static void asc_out_cb(void *opaque, int free_b)
 {
     ASCState *s = ASC(opaque);
-    int samples;
+    int samples, generated;
+    int64_t silent_samples, now, fifo_next_cycle_ns;
 
     if (free_b == 0) {
         return;
@@ -321,18 +322,58 @@ static void asc_out_cb(void *opaque, int free_b)
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = 0;
+        generated = 0;
         break;
     case 1:
         /* FIFO mode */
-        samples = generate_fifo(s, samples);
+        generated = generate_fifo(s, samples);
+
+        now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        if (!generated && s->fifo_empty_ns == -1) {
+            /* Indicate time when FIFO is empty and exit */
+            s->fifo_empty_ns = now;
+            break;
+        }
+
+        /* Calculate number of silent samples since FIFO empty */
+        silent_samples = (now - s->fifo_empty_ns) /
+                         (NANOSECONDS_PER_SECOND / 22257);
+
+        if (!generated) {
+            fprintf(stderr, "--- SS: %ld\n", silent_samples);
+
+            /* If we have had more than one FIFO of silence, output it */
+            if (silent_samples > 0x400) {
+                fprintf(stderr, "=== SILENCE\n");
+                generated = samples;
+                memset(s->mixbuf, 0x80, samples << s->shift);
+            }
+
+            /* If we have cycled through the FIFO, raise the interrupt */
+            fifo_next_cycle_ns = s->fifo_empty_ns + ASC_FIFO_CYCLE_TIME;
+            if (now > fifo_next_cycle_ns) {
+                fprintf(stderr, "--- IRQ cycle\n");
+                s->fifo_empty_ns = now;
+
+                s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                          ASC_FIFO_STATUS_FULL_EMPTY;
+                s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                          ASC_FIFO_STATUS_FULL_EMPTY;
+                asc_raise_irq(s);
+            }
+        } else {
+            /* FIFO is no longer empty */
+            fprintf(stderr, "--- NEW DATA, reset\n");
+            s->fifo_empty_ns = -1;
+        }
         break;
     case 2:
         /* Wave table mode */
-        samples = generate_wavetable(s, samples);
+        generated = generate_wavetable(s, samples);
         break;
     }
 
+#if 0
     if (!samples) {
         int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
         int64_t expire = s->fifo_empty_cycle_ns;
@@ -368,21 +409,27 @@ static void asc_out_cb(void *opaque, int free_b)
             }
 
             assert(t == 0x400);
-#endif            
+#endif  
+#if 0
             s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                       ASC_FIFO_STATUS_FULL_EMPTY;
             s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
                                       ASC_FIFO_STATUS_FULL_EMPTY;
             asc_raise_irq(s);
-
+#endif
             /* Check again after next complete FIFO cycle */
             s->fifo_empty_cycle_ns = now + ASC_FIFO_CYCLE_TIME;
         }
     } else {
         fprintf(stderr, ">>> DATA %d\n", samples);
     }
+#endif
 
-    AUD_write(s->voice, s->mixbuf, samples << s->shift);
+    if (!generated) {
+        return;
+    }
+
+    AUD_write(s->voice, s->mixbuf, generated << s->shift);
 }
 
 static uint64_t asc_fifo_read(void *opaque, hwaddr addr,
@@ -430,8 +477,6 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
         fs->fifo[addr] = value;
     }
 
-    /* New data has arrived, so stop timer */
-    s->fifo_empty_cycle_ns = -1;
     return;
 }
 
@@ -644,7 +689,7 @@ static void asc_reset_hold(Object *obj)
     memset(s->regs, 0, sizeof(s->regs));
     asc_fifo_reset(&s->fifos[0]);
     asc_fifo_reset(&s->fifos[1]);
-    s->fifo_empty_cycle_ns = -1;
+    s->fifo_empty_ns = -1;
 
     if (s->type == ASC_TYPE_ASC) {
         /* FIFO half full IRQs enabled by default */
