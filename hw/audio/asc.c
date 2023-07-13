@@ -335,7 +335,7 @@ static void asc_out_cb(void *opaque, int free_b)
             break;
         }
 
-        /* Calculate number of silent samples since FIFO empty */
+        /* Calculate number of silent samples since FIFO was empty */
         silent_samples = (now - s->fifo_empty_ns) /
                          (NANOSECONDS_PER_SECOND / 22257);
 
@@ -343,11 +343,9 @@ static void asc_out_cb(void *opaque, int free_b)
             fprintf(stderr, "--- SS: %ld\n", silent_samples);
 
             /* If we have had more than one FIFO of silence, output it */
-            if (silent_samples > 0x400) {
-                fprintf(stderr, "=== SILENCE\n");
-                generated = samples;
-                memset(s->mixbuf, 0x80, samples << s->shift);
-            }
+            generated = MIN(samples, silent_samples);
+            fprintf(stderr, "=== SILENCE (%d)\n", generated);
+            memset(s->mixbuf, 0x80, generated << s->shift);
 
             /* If we have cycled through the FIFO, raise the interrupt */
             fifo_next_cycle_ns = s->fifo_empty_ns + ASC_FIFO_CYCLE_TIME;
