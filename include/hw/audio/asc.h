@@ -66,7 +66,7 @@ struct ASCState {
     uint8_t *mixbuf;
     int samples;
     int shift;
-    int64_t fifo_empty_cycle_ns;
+    int64_t fifo_empty_ns;
 
     qemu_irq irq;
 
