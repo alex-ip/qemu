@@ -340,17 +340,17 @@ static void asc_out_cb(void *opaque, int free_b)
                          (NANOSECONDS_PER_SECOND / 22257);
 
         if (!generated) {
-            fprintf(stderr, "--- SS: %ld\n", silent_samples);
+            //fprintf(stderr, "--- SS: %ld\n", silent_samples);
 
             /* If we have had more than one FIFO of silence, output it */
             generated = MIN(samples, silent_samples);
-            fprintf(stderr, "=== SILENCE (%d)\n", generated);
+            //fprintf(stderr, "=== SILENCE (%d)\n", generated);
             memset(s->mixbuf, 0x80, generated << s->shift);
 
             /* If we have cycled through the FIFO, raise the interrupt */
             fifo_next_cycle_ns = s->fifo_empty_ns + ASC_FIFO_CYCLE_TIME;
             if (now > fifo_next_cycle_ns) {
-                fprintf(stderr, "--- IRQ cycle\n");
+                //fprintf(stderr, "--- IRQ cycle\n");
                 s->fifo_empty_ns = now;
 
                 s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
@@ -361,7 +361,7 @@ static void asc_out_cb(void *opaque, int free_b)
             }
         } else {
             /* FIFO is no longer empty */
-            fprintf(stderr, "--- NEW DATA, reset\n");
+            //fprintf(stderr, "--- NEW DATA, reset\n");
             s->fifo_empty_ns = -1;
         }
         break;
