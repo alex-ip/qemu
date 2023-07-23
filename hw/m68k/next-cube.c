@@ -74,8 +74,6 @@ struct NeXTState {
     MachineState parent;
 
     next_dma dma[10];
-    qemu_irq scsi_reset;
-    qemu_irq scsi_dma;
 };
 
 #define TYPE_NEXT_PC "next-pc"
@@ -92,10 +90,13 @@ struct NeXTPC {
 
     uint32_t scr1;
     uint32_t scr2;
-    uint8_t scsi_csr_1;
-    uint8_t scsi_csr_2;
     uint32_t int_mask;
     uint32_t int_status;
+    uint8_t scsi_csr_1;
+    uint8_t scsi_csr_2;
+
+    qemu_irq scsi_reset;
+    qemu_irq scsi_dma;
 
     NextRtc rtc;
 };
@@ -468,7 +469,7 @@ static void scr_writeb(NeXTPC *s, hwaddr addr, uint32_t value)
             DPRINTF("SCSICSR FIFO Flush\n");
             /* will have to add another irq to the esp if this is needed */
             /* esp_puflush_fifo(esp_g); */
-            /* qemu_irq_pulse(s->scsi_dma); */
+            qemu_irq_pulse(s->scsi_dma);
         }
 
         if (value & SCSICSR_ENABLE) {
@@ -488,9 +489,9 @@ static void scr_writeb(NeXTPC *s, hwaddr addr, uint32_t value)
         if (value & SCSICSR_RESET) {
             DPRINTF("SCSICSR Reset\n");
             /* I think this should set DMADIR. CPUDMA and INTMASK to 0 */
-            /* qemu_irq_raise(s->scsi_reset); */
-            /* s->scsi_csr_1 &= ~(SCSICSR_INTMASK |0x80|0x1); */
-
+            qemu_irq_raise(s->scsi_reset);
+            s->scsi_csr_1 &= ~(SCSICSR_INTMASK |0x80|0x1);
+            qemu_irq_lower(s->scsi_reset);
         }
         if (value & SCSICSR_DMADIR) {
             DPRINTF("SCSICSR DMAdir\n");
@@ -498,10 +499,11 @@ static void scr_writeb(NeXTPC *s, hwaddr addr, uint32_t value)
         if (value & SCSICSR_CPUDMA) {
             DPRINTF("SCSICSR CPUDMA\n");
             /* qemu_irq_raise(s->scsi_dma); */
-
             s->int_status |= 0x4000000;
         } else {
+            /* fprintf(stderr,"SCSICSR CPUDMA disabled\n"); */
             s->int_status &= ~(0x4000000);
+            /* qemu_irq_lower(s->scsi_dma); */
         }
         if (value & SCSICSR_INTMASK) {
             DPRINTF("SCSICSR INTMASK\n");
@@ -901,7 +903,7 @@ static void nextscsi_write(void *opaque, uint8_t *buf, int size)
 
 static void next_scsi_init(DeviceState *pcdev, M68kCPU *cpu)
 {
-    NeXTState *next_state = NEXT_MACHINE(qdev_get_machine());
+    struct NeXTPC *next_pc = NEXT_PC(pcdev);
     DeviceState *dev;
     SysBusDevice *sysbusdev;
     SysBusESPState *sysbus_esp;
@@ -920,8 +922,8 @@ static void next_scsi_init(DeviceState *pcdev, M68kCPU *cpu)
     sysbus_connect_irq(sysbusdev, 0, qdev_get_gpio_in(pcdev, NEXT_SCSI_I));
     sysbus_mmio_map(sysbusdev, 0, 0x2114000);
 
-    next_state->scsi_reset = qdev_get_gpio_in(dev, 0);
-    next_state->scsi_dma = qdev_get_gpio_in(dev, 1);
+    next_pc->scsi_reset = qdev_get_gpio_in(dev, 0);
+    next_pc->scsi_dma = qdev_get_gpio_in(dev, 1);
 
     scsi_bus_legacy_handle_cmdline(&esp->bus);
 }
