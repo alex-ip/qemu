@@ -470,7 +470,13 @@ static void scr_writeb(NeXTPC *s, hwaddr addr, uint32_t value)
             DPRINTF("SCSICSR FIFO Flush\n");
             /* will have to add another irq to the esp if this is needed */
             /* esp_puflush_fifo(esp_g); */
-            qemu_irq_pulse(s->scsi_dma);
+            /*
+             * MCA: this is likely a memory flush similar to the Mac DBDMA
+             * controller: if the ESP FIFO needs to be flushed then it would
+             * be accessed by sending a simple FLUSH command. Do nothing for
+             * now in order to prevent spurious DMA enable requests being
+             * triggered within the ESP.
+             */
         }
 
         if (value & SCSICSR_ENABLE) {
