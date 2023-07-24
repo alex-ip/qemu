@@ -505,12 +505,12 @@ static void scr_writeb(NeXTPC *s, hwaddr addr, uint32_t value)
         }
         if (value & SCSICSR_CPUDMA) {
             DPRINTF("SCSICSR CPUDMA\n");
-            /* qemu_irq_raise(s->scsi_dma); */
             s->int_status |= 0x4000000;
+            qemu_irq_raise(s->scsi_dma);
         } else {
             /* fprintf(stderr,"SCSICSR CPUDMA disabled\n"); */
+            qemu_irq_lower(s->scsi_dma);
             s->int_status &= ~(0x4000000);
-            /* qemu_irq_lower(s->scsi_dma); */
         }
         if (value & SCSICSR_INTMASK) {
             DPRINTF("SCSICSR INTMASK\n");
