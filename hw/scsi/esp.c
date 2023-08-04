@@ -170,6 +170,12 @@ static uint32_t esp_get_stc(ESPState *s)
     return dmalen;
 }
 
+static void esp_set_phase(ESPState *s, uint8_t phase)
+{
+    s->rregs[ESP_RSTAT] &= ~7;
+    s->rregs[ESP_RSTAT] |= phase;
+}
+
 static uint8_t esp_pdma_read(ESPState *s)
 {
     uint8_t val;
@@ -294,9 +300,9 @@ static void do_command_phase(ESPState *s)
              * complete before raising the command completion interrupt
              */
             s->data_in_ready = false;
-            s->rregs[ESP_RSTAT] |= STAT_DI;
+            esp_set_phase(s, STAT_DI);
         } else {
-            s->rregs[ESP_RSTAT] |= STAT_DO;
+            esp_set_phase(s, STAT_DO);
             s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
             esp_raise_irq(s);
             esp_lower_drq(s);
@@ -372,7 +378,7 @@ static void handle_satn(ESPState *s)
         s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
-        s->rregs[ESP_RSTAT] = STAT_CD;
+        esp_set_phase(s, STAT_CD);
     }
 }
 
@@ -417,7 +423,7 @@ static void handle_s_without_atn(ESPState *s)
         s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
-        s->rregs[ESP_RSTAT] = STAT_CD;
+        esp_set_phase(s, STAT_CD);
     }
 }
 
@@ -435,7 +441,8 @@ static void satn_stop_pdma_cb(ESPState *s)
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
         s->do_cmd = 1;
         s->cmdfifo_cdb_offset = 1;
-        s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
+        esp_set_phase(s, STAT_CD);
+        s->rregs[ESP_RSTAT] |= STAT_TC;
         s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
         s->rregs[ESP_RSEQ] = SEQ_CD;
         esp_raise_irq(s);
@@ -459,7 +466,7 @@ static void handle_satn_stop(ESPState *s)
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
         s->do_cmd = 1;
         s->cmdfifo_cdb_offset = 1;
-        s->rregs[ESP_RSTAT] = STAT_MO;
+        esp_set_phase(s, STAT_MO);
         s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
         s->rregs[ESP_RSEQ] = SEQ_MO;
         esp_raise_irq(s);
@@ -470,13 +477,14 @@ static void handle_satn_stop(ESPState *s)
         s->do_cmd = 1;
         /* Target present, switch to message out phase */
         s->rregs[ESP_RSEQ] = SEQ_MO;
-        s->rregs[ESP_RSTAT] = STAT_MO;
+        esp_set_phase(s, STAT_MO);
     }
 }
 
 static void write_response_pdma_cb(ESPState *s)
 {
-    s->rregs[ESP_RSTAT] = STAT_TC | STAT_ST;
+    esp_set_phase(s, STAT_ST);
+    s->rregs[ESP_RSTAT] |= STAT_TC;
     s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
     s->rregs[ESP_RSEQ] = SEQ_CD;
     esp_raise_irq(s);
@@ -494,7 +502,8 @@ static void write_response(ESPState *s)
     if (s->dma) {
         if (s->dma_memory_write) {
             s->dma_memory_write(s->dma_opaque, buf, 2);
-            s->rregs[ESP_RSTAT] = STAT_TC | STAT_ST;
+            esp_set_phase(s, STAT_ST);
+            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
         } else {
@@ -553,7 +562,8 @@ static void do_dma_pdma_cb(ESPState *s)
              * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
-            s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
+            esp_set_phase(s, STAT_CD);
+            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -659,7 +669,8 @@ static void esp_do_dma(ESPState *s)
              * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
-            s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
+            esp_set_phase(s, STAT_CD);
+            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -788,7 +799,8 @@ static void esp_do_nodma(ESPState *s)
              * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
-            s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
+            esp_set_phase(s, STAT_CD);
+            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -882,8 +894,7 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
      * transfers from the target the last byte is still in the FIFO
      */
     if (s->ti_size == 0) {
-        s->rregs[ESP_RSTAT] &= ~7;
-        s->rregs[ESP_RSTAT] |= STAT_ST;
+        esp_set_phase(s, STAT_ST);
         esp_dma_done(s);
         esp_lower_drq(s);
     }
@@ -1043,7 +1054,7 @@ static void esp_run_cmd(ESPState *s)
         trace_esp_mem_writeb_cmd_iccs(cmd);
         write_response(s);
         s->rregs[ESP_RINTR] |= INTR_FC;
-        s->rregs[ESP_RSTAT] |= STAT_MI;
+        esp_set_phase(s, STAT_MI);
         break;
     case CMD_MSGACC:
         trace_esp_mem_writeb_cmd_msgacc(cmd);
@@ -1111,7 +1122,8 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
                      * The last byte of a non-DMA transfer has been read out
                      * of the FIFO so switch to status phase
                      */
-                    s->rregs[ESP_RSTAT] = STAT_TC | STAT_ST;
+                    esp_set_phase(s, STAT_ST);
+                    s->rregs[ESP_RSTAT] |= STAT_TC;
                 }
             }
             s->rregs[ESP_FIFO] = esp_fifo_pop(&s->fifo);
