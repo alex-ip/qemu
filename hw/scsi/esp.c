@@ -193,9 +193,6 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
     }
 
     esp_fifo_push(&s->fifo, val);
-
-    dmalen--;
-    esp_set_tc(s, dmalen);
 }
 
 static void esp_set_pdma_cb(ESPState *s, enum pdma_cb cb)
@@ -346,6 +343,7 @@ static void satn_pdma_cb(ESPState *s)
     n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
     n = MIN(fifo8_num_free(&s->cmdfifo), n);
     fifo8_push_all(&s->cmdfifo, buf, n);
+    esp_set_tc(s, esp_get_tc(s) - n);
 
     if (!esp_get_tc(s) && !fifo8_is_empty(&s->cmdfifo)) {
         s->cmdfifo_cdb_offset = 1;
@@ -391,6 +389,7 @@ static void s_without_satn_pdma_cb(ESPState *s)
     n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
     n = MIN(fifo8_num_free(&s->cmdfifo), n);
     fifo8_push_all(&s->cmdfifo, buf, n);
+    esp_set_tc(s, esp_get_tc(s) - n);
 
     if (!esp_get_tc(s) && !fifo8_is_empty(&s->cmdfifo)) {
         s->cmdfifo_cdb_offset = 0;
@@ -436,6 +435,7 @@ static void satn_stop_pdma_cb(ESPState *s)
     n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
     n = MIN(fifo8_num_free(&s->cmdfifo), n);
     fifo8_push_all(&s->cmdfifo, buf, n);
+    esp_set_tc(s, esp_get_tc(s) - n);
 
     if (!esp_get_tc(s) && !fifo8_is_empty(&s->cmdfifo)) {
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
@@ -538,6 +538,7 @@ static void do_dma_pdma_cb(ESPState *s)
         n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
         n = MIN(fifo8_num_free(&s->cmdfifo), n);
         fifo8_push_all(&s->cmdfifo, buf, n);
+        esp_set_tc(s, esp_get_tc(s) - n);
 
         /* Ensure we have received complete command after SATN and stop */
         if (esp_get_tc(s) || fifo8_is_empty(&s->cmdfifo)) {
@@ -580,6 +581,7 @@ static void do_dma_pdma_cb(ESPState *s)
         s->async_buf += n;
         s->async_len -= n;
         s->ti_size += n;
+        esp_set_tc(s, esp_get_tc(s) - n);
 
         if (n < len) {
             /* Unaligned accesses can cause FIFO wraparound */
@@ -588,6 +590,7 @@ static void do_dma_pdma_cb(ESPState *s)
             s->async_buf += n;
             s->async_len -= n;
             s->ti_size += n;
+            esp_set_tc(s, esp_get_tc(s) - n);
         }
 
         if (s->async_len == 0) {
