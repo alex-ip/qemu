@@ -484,7 +484,6 @@ static void handle_satn_stop(ESPState *s)
 static void write_response_pdma_cb(ESPState *s)
 {
     esp_set_phase(s, STAT_ST);
-    s->rregs[ESP_RSTAT] |= STAT_TC;
     s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
     s->rregs[ESP_RSEQ] = SEQ_CD;
     esp_raise_irq(s);
@@ -503,7 +502,6 @@ static void write_response(ESPState *s)
         if (s->dma_memory_write) {
             s->dma_memory_write(s->dma_opaque, buf, 2);
             esp_set_phase(s, STAT_ST);
-            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
         } else {
@@ -521,10 +519,8 @@ static void write_response(ESPState *s)
 
 static void esp_dma_done(ESPState *s)
 {
-    s->rregs[ESP_RSTAT] |= STAT_TC;
     s->rregs[ESP_RINTR] |= INTR_BS;
     s->rregs[ESP_RFLAGS] = 0;
-    esp_set_tc(s, 0);
     esp_raise_irq(s);
 }
 
@@ -563,7 +559,6 @@ static void do_dma_pdma_cb(ESPState *s)
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             esp_set_phase(s, STAT_CD);
-            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -670,7 +665,6 @@ static void esp_do_dma(ESPState *s)
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             esp_set_phase(s, STAT_CD);
-            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -800,7 +794,6 @@ static void esp_do_nodma(ESPState *s)
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             esp_set_phase(s, STAT_CD);
-            s->rregs[ESP_RSTAT] |= STAT_TC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
@@ -923,7 +916,6 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
          * completion interrupt
          */
         s->data_in_ready = true;
-        s->rregs[ESP_RSTAT] |= STAT_TC;
         s->rregs[ESP_RINTR] |= INTR_BS;
         esp_raise_irq(s);
     }
@@ -968,7 +960,6 @@ static void handle_ti(ESPState *s)
     if (s->dma) {
         dmalen = esp_get_tc(s);
         trace_esp_handle_ti(dmalen);
-        s->rregs[ESP_RSTAT] &= ~STAT_TC;
         esp_do_dma(s);
     } else {
         trace_esp_handle_ti(s->ti_size);
@@ -1123,7 +1114,6 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
                      * of the FIFO so switch to status phase
                      */
                     esp_set_phase(s, STAT_ST);
-                    s->rregs[ESP_RSTAT] |= STAT_TC;
                 }
             }
             s->rregs[ESP_FIFO] = esp_fifo_pop(&s->fifo);
