@@ -579,12 +579,12 @@ static void do_dma_pdma_cb(ESPState *s)
         s->ti_size += n;
         esp_set_tc(s, esp_get_tc(s) - n);
 
-        if (s->async_len == 0) {
+        if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
             scsi_req_continue(s->current_req);
             return;
         }
 
-        if (esp_get_tc(s) == 0) {
+        if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
             esp_lower_drq(s);
             esp_dma_done(s);
         }
@@ -680,7 +680,7 @@ static void esp_do_dma(ESPState *s)
             s->async_len -= len;
             s->ti_size += len;
 
-            if (s->async_len == 0) {
+            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
                 scsi_req_continue(s->current_req);
                 /*
                  * If there is still data to be read from the device then
@@ -690,7 +690,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            if (esp_get_tc(s) == 0) {
+            if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
                 /* Partially filled a scsi buffer. Complete immediately.  */
                 esp_dma_done(s);
                 esp_lower_drq(s);
@@ -699,7 +699,7 @@ static void esp_do_dma(ESPState *s)
             esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
 
-            if (s->async_len == 0) {
+            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
                 scsi_req_continue(s->current_req);
                 /*
                  * If there is still data to be read from the device then
@@ -709,7 +709,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            if (esp_get_tc(s) == 0) {
+            if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
                 /* Partially filled a scsi buffer. Complete immediately.  */
                 esp_dma_done(s);
                 esp_lower_drq(s);
@@ -724,12 +724,12 @@ static void esp_do_dma(ESPState *s)
             s->async_len -= len;
             s->ti_size -= len;
 
-            if (s->async_len == 0) {
+            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
                 scsi_req_continue(s->current_req);
                 return;
             }
 
-            if (esp_get_tc(s) == 0) {
+            if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
                 /* Partially filled a scsi buffer. Complete immediately.  */
                 esp_dma_done(s);
                 esp_lower_drq(s);
@@ -926,7 +926,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
 
     if (s->ti_cmd == (CMD_TI | CMD_DMA)) {
         /* When the SCSI layer returns more data, raise deferred INTR_BS */
-        if (esp_get_tc(s) == 0) {
+        if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
             esp_lower_drq(s);
             esp_dma_done(s);
         }
