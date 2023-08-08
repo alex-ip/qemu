@@ -591,13 +591,6 @@ static void do_dma_pdma_cb(ESPState *s)
 
         return;
     } else {
-        if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
-            /* Defer until the scsi layer has completed */
-            scsi_req_continue(s->current_req);
-            s->data_in_ready = false;
-            return;
-        }
-
         /* Copy device data to FIFO */
         len = MIN(s->async_len, esp_get_tc(s));
         len = MIN(len, fifo8_num_free(&s->fifo));
@@ -606,6 +599,12 @@ static void do_dma_pdma_cb(ESPState *s)
         s->async_len -= len;
         s->ti_size -= len;
         esp_set_tc(s, esp_get_tc(s) - len);
+
+        if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+            /* Defer until the scsi layer has completed */
+            scsi_req_continue(s->current_req);
+            return;
+        }
 
         if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
             esp_lower_drq(s);
@@ -899,6 +898,11 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
      */
 
     if (s->ti_cmd == (CMD_TI | CMD_DMA)) {
+        /* When the SCSI layer returns more data, raise deferred INTR_BS */
+        if (esp_get_tc(s) == 0) {
+            esp_lower_drq(s);
+            esp_dma_done(s);
+        }
         esp_do_dma(s);
     } else if (s->ti_cmd == CMD_TI) {
         esp_do_nodma(s);
