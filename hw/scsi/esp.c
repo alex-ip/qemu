@@ -579,16 +579,6 @@ static void do_dma_pdma_cb(ESPState *s)
         s->ti_size += n;
         esp_set_tc(s, esp_get_tc(s) - n);
 
-        if (n < len) {
-            /* Unaligned accesses can cause FIFO wraparound */
-            len = len - n;
-            n = esp_fifo_pop_buf(&s->fifo, s->async_buf, len);
-            s->async_buf += n;
-            s->async_len -= n;
-            s->ti_size += n;
-            esp_set_tc(s, esp_get_tc(s) - n);
-        }
-
         if (s->async_len == 0) {
             scsi_req_continue(s->current_req);
             return;
