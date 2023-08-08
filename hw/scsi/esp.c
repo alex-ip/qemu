@@ -698,6 +698,22 @@ static void esp_do_dma(ESPState *s)
         } else {
             esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
+
+            if (s->async_len == 0) {
+                scsi_req_continue(s->current_req);
+                /*
+                 * If there is still data to be read from the device then
+                 * complete the DMA operation immediately.  Otherwise defer
+                 * until the scsi layer has completed.
+                 */
+                return;
+            }
+
+            if (esp_get_tc(s) == 0) {
+                /* Partially filled a scsi buffer. Complete immediately.  */
+                esp_dma_done(s);
+                esp_lower_drq(s);
+            }
         }
     } else {
         if (s->dma_memory_write) {
@@ -728,6 +744,17 @@ static void esp_do_dma(ESPState *s)
             esp_set_tc(s, esp_get_tc(s) - len);
             esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
+
+            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+                /* Defer until the scsi layer has completed */
+                scsi_req_continue(s->current_req);
+                return;
+            }
+
+            if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
+                esp_lower_drq(s);
+                esp_dma_done(s);
+            }
         }
     }
 }
