@@ -516,7 +516,7 @@ static void write_response(ESPState *s)
     esp_raise_irq(s);
 }
 
-static void esp_dma_done(ESPState *s)
+static void esp_dma_ti_check(ESPState *s)
 {
     if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
         s->rregs[ESP_RINTR] |= INTR_BS;
@@ -587,7 +587,7 @@ static void do_dma_pdma_cb(ESPState *s)
             return;
         }
 
-        esp_dma_done(s);
+        esp_dma_ti_check(s);
     } else {
         /* Copy device data to FIFO */
         len = MIN(s->async_len, esp_get_tc(s));
@@ -604,7 +604,7 @@ static void do_dma_pdma_cb(ESPState *s)
             return;
         }
 
-        esp_dma_done(s);
+        esp_dma_ti_check(s);
     }
 }
 
@@ -685,7 +685,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            esp_dma_done(s);
+            esp_dma_ti_check(s);
         } else {
             esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
@@ -700,7 +700,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            esp_dma_done(s);
+            esp_dma_ti_check(s);
         }
     } else {
         if (s->dma_memory_write) {
@@ -716,7 +716,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            esp_dma_done(s);
+            esp_dma_ti_check(s);
         } else {
             /* Copy device data to FIFO */
             len = MIN(len, fifo8_num_free(&s->fifo));
@@ -734,7 +734,7 @@ static void esp_do_dma(ESPState *s)
                 return;
             }
 
-            esp_dma_done(s);
+            esp_dma_ti_check(s);
         }
     }
 }
@@ -869,7 +869,7 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
          * this)
          */
         esp_set_tc(s, 0);
-        esp_dma_done(s);
+        esp_dma_ti_check(s);
     } else {
         /*
          * Transfer truncated: raise INTR_BS to indicate early change of
@@ -918,7 +918,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
 
     if (s->ti_cmd == (CMD_TI | CMD_DMA)) {
         /* When the SCSI layer returns more data, raise deferred INTR_BS */
-        esp_dma_done(s);
+        esp_dma_ti_check(s);
 
         esp_do_dma(s);
     } else if (s->ti_cmd == CMD_TI) {
