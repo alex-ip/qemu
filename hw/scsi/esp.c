@@ -358,7 +358,6 @@ static void satn_pdma_cb(ESPState *s)
 
     if (!esp_get_tc(s) && !fifo8_is_empty(&s->cmdfifo)) {
         s->cmdfifo_cdb_offset = 1;
-        s->do_cmd = 0;
         do_cmd(s);
     }
 }
@@ -378,13 +377,11 @@ static void handle_satn(ESPState *s)
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 1;
-        s->do_cmd = 0;
         do_cmd(s);
     } else if (cmdlen == 0) {
         if (s->dma) {
             esp_raise_drq(s);
         }
-        s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
         esp_set_phase(s, STAT_CD);
@@ -406,13 +403,11 @@ static void handle_s_without_atn(ESPState *s)
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 0;
-        s->do_cmd = 0;
         do_cmd(s);
     } else if (cmdlen == 0) {
         if (s->dma) {
             esp_raise_drq(s);
         }
-        s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
         esp_set_phase(s, STAT_CD);
@@ -431,7 +426,6 @@ static void satn_stop_pdma_cb(ESPState *s)
 
     if (!esp_get_tc(s) && !fifo8_is_empty(&s->cmdfifo)) {
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
-        s->do_cmd = 1;
         s->cmdfifo_cdb_offset = 1;
         esp_set_phase(s, STAT_CD);
         s->rregs[ESP_RSTAT] |= STAT_TC;
@@ -456,7 +450,6 @@ static void handle_satn_stop(ESPState *s)
     cmdlen = get_cmd(s, 1);
     if (cmdlen > 0) {
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
-        s->do_cmd = 1;
         s->cmdfifo_cdb_offset = 1;
         esp_set_phase(s, STAT_MO);
         s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
@@ -466,7 +459,6 @@ static void handle_satn_stop(ESPState *s)
         if (s->dma) {
             esp_raise_drq(s);
         }
-        s->do_cmd = 1;
         /* Target present, switch to message out phase */
         s->rregs[ESP_RSEQ] = SEQ_MO;
         esp_set_phase(s, STAT_MO);
@@ -545,7 +537,6 @@ static void do_dma_pdma_cb(ESPState *s)
             }
 
             /* Command has been received */
-            s->do_cmd = 0;
             do_cmd(s);
         } else {
             /*
@@ -647,7 +638,6 @@ static void esp_do_dma(ESPState *s)
             }
 
             /* Command has been received */
-            s->do_cmd = 0;
             do_cmd(s);
         } else {
             /*
@@ -783,7 +773,6 @@ static void esp_do_nodma(ESPState *s)
             }
 
             /* Command has been received */
-            s->do_cmd = 0;
             do_cmd(s);
         } else {
             /*
@@ -927,7 +916,6 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
     int to_device = (esp_get_phase(s) == STAT_DO);
     uint32_t dmalen = esp_get_tc(s);
 
-    assert(!s->do_cmd);
     trace_esp_transfer_data(dmalen, s->ti_size);
     s->async_len = len;
     s->async_buf = scsi_req_get_buf(req);
@@ -990,7 +978,6 @@ void esp_hard_reset(ESPState *s)
     fifo8_reset(&s->fifo);
     fifo8_reset(&s->cmdfifo);
     s->dma = 0;
-    s->do_cmd = 0;
     s->dma_cb = NULL;
 
     s->rregs[ESP_CFG1] = 7;
