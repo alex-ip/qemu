@@ -517,7 +517,9 @@ static void do_dma_pdma_cb(ESPState *s)
     int len;
     uint32_t n;
 
-    if (s->do_cmd) {
+    switch (esp_get_phase(s)) {
+    case STAT_MO:
+    case STAT_CD:
         /* Copy FIFO into cmdfifo */
         n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
         n = MIN(fifo8_num_free(&s->cmdfifo), n);
@@ -549,10 +551,8 @@ static void do_dma_pdma_cb(ESPState *s)
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
         }
-        return;
-    }
+        break;
 
-    switch (esp_get_phase(s)) {
     case STAT_DO:
         if (!s->current_req) {
             return;
