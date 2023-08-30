@@ -11,6 +11,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "hw/sysbus.h"
 #include "hw/irq.h"
 #include "audio/audio.h"
@@ -100,6 +101,8 @@ enum {
 #define ASC_EXTREGS_INTCTRL            0x9
 #define ASC_EXTREGS_CDXA_DECOMP_FILT   0x10
 
+#define ASC_FIFO_CYCLE_TIME            ((NANOSECONDS_PER_SECOND / ASC_FREQ) * \
+                                        0x400)
 
 static void asc_raise_irq(ASCState *s)
 {
@@ -150,26 +153,11 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
 
 static int generate_fifo(ASCState *s, int maxsamples)
 {
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint8_t *buf = s->mixbuf;
     int i, limit, count = 0;
 
     limit = MIN(MAX(s->fifos[0].cnt, s->fifos[1].cnt), maxsamples);
-
-    /*
-     * If starting a new run with no FIFO data present, update the IRQ and
-     * continue
-     */
-    if (limit == 0 && s->fifos[0].int_status == 0 &&
-            s->fifos[1].int_status == 0) {
-        s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
-                                  ASC_FIFO_STATUS_FULL_EMPTY;
-        s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
-                                  ASC_FIFO_STATUS_FULL_EMPTY;
-
-        asc_raise_irq(s);
-        return 0;
-    }
-
     while (count < limit) {
         uint8_t val;
         int16_t d, f0, f1;
@@ -256,6 +244,30 @@ static int generate_fifo(ASCState *s, int maxsamples)
         count++;
     }
 
+    /*
+     * MacOS (un)helpfully leaves the FIFO engine running even when it has
+     * finished writing out samples, but still expects the FIFO empty
+     * interrupts to be generated for each FIFO cycle (without these interrupts
+     * MacOS will freeze)
+     */
+    if (s->fifos[0].cnt == 0 && s->fifos[1].cnt == 0) {
+        if (!s->fifo_empty_ns) {
+            /* FIFO has completed first empty cycle */
+            s->fifo_empty_ns = now;
+        } else if (now > (s->fifo_empty_ns + ASC_FIFO_CYCLE_TIME)) {
+            /* FIFO has completed entire cycle with no data */
+            s->fifos[0].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+            s->fifos[1].int_status |= ASC_FIFO_STATUS_HALF_FULL |
+                                      ASC_FIFO_STATUS_FULL_EMPTY;
+            s->fifo_empty_ns = now;
+            asc_raise_irq(s);
+        }
+    } else {
+        /* FIFO contains data, reset empty time */
+        s->fifo_empty_ns = 0;
+    }
+
     return count;
 }
 
@@ -298,7 +310,7 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 static void asc_out_cb(void *opaque, int free_b)
 {
     ASCState *s = opaque;
-    int samples;
+    int samples, generated;
 
     if (free_b == 0) {
         return;
@@ -309,23 +321,23 @@ static void asc_out_cb(void *opaque, int free_b)
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = 0;
+        generated = 0;
         break;
     case 1:
         /* FIFO mode */
-        samples = generate_fifo(s, samples);
+        generated = generate_fifo(s, samples);
         break;
     case 2:
         /* Wave table mode */
-        samples = generate_wavetable(s, samples);
+        generated = generate_wavetable(s, samples);
         break;
     }
 
-    if (!samples) {
+    if (!generated) {
         return;
     }
 
-    AUD_write(s->voice, s->mixbuf, samples << s->shift);
+    AUD_write(s->voice, s->mixbuf, generated << s->shift);
 }
 
 static uint64_t asc_fifo_read(void *opaque, hwaddr addr,
@@ -584,6 +596,7 @@ static void asc_reset_hold(Object *obj)
     memset(s->regs, 0, sizeof(s->regs));
     asc_fifo_reset(&s->fifos[0]);
     asc_fifo_reset(&s->fifos[1]);
+    s->fifo_empty_ns = 0;
 
     if (s->type == ASC_TYPE_ASC) {
         /* FIFO half full IRQs enabled by default */
@@ -608,7 +621,7 @@ static void asc_realize(DeviceState *dev, Error **errp)
 
     AUD_register_card("Apple Sound Chip", &s->card);
 
-    as.freq = 22257;
+    as.freq = ASC_FREQ;
     as.nchannels = 2;
     as.fmt = AUDIO_FORMAT_U8;
     as.endianness = AUDIO_HOST_ENDIANNESS;
