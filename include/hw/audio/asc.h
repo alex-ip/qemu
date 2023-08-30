@@ -17,6 +17,8 @@
 #include "hw/sysbus.h"
 #include "audio/audio.h"
 
+#define ASC_FREQ 22257
+
 enum {
     ASC_TYPE_ASC    = 0,  /* original discrete Apple Sound Chip */
     ASC_TYPE_EASC   = 1   /* discrete Enhanced Apple Sound Chip */
@@ -65,6 +67,9 @@ struct ASCState {
     uint8_t *mixbuf;
     int samples;
     int shift;
+
+    /* Time when we were last able to generate samples */
+    int64_t fifo_empty_ns;
 
     qemu_irq irq;
 
