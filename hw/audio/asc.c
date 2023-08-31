@@ -303,7 +303,7 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 static void asc_out_cb(void *opaque, int free_b)
 {
     ASCState *s = opaque;
-    int samples;
+    int samples, generated;
 
     if (free_b == 0) {
         return;
@@ -314,29 +314,41 @@ static void asc_out_cb(void *opaque, int free_b)
     switch (s->regs[ASC_MODE] & 3) {
     default:
         /* Off */
-        samples = 0;
+        generated = 0;
         break;
     case 1:
         /* FIFO mode */
-        samples = generate_fifo(s, samples);
+        generated = generate_fifo(s, samples);
         break;
     case 2:
         /* Wave table mode */
-        samples = generate_wavetable(s, samples);
+        generated = generate_wavetable(s, samples);
         break;
     }
 
-    if (!samples) {
+    if (!generated) {
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+
         if (!s->fifo_empty_ns) {
             /* Store time when we emptied the FIFOs */
-            s->fifo_empty_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+            s->fifo_empty_ns = now;
+        } else {
+            int64_t silence_start = s->fifo_empty_ns + ASC_FIFO_CYCLE_TIME;
+            int64_t silence_stop = silence_start +
+                                   muldiv64(AUD_get_buffer_size_out(s->voice),
+                                            NANOSECONDS_PER_SECOND, ASC_FREQ) ;
+
+            if (now > silence_start && now < silence_stop) {
+                memset(s->mixbuf, 0x80, samples << s->shift);
+                AUD_write(s->voice, s->mixbuf, samples << s->shift);
+            }
         }
         return;
     }
 
     s->fifo_empty_ns = 0;
 
-    AUD_write(s->voice, s->mixbuf, samples << s->shift);
+    AUD_write(s->voice, s->mixbuf, generated << s->shift);
 }
 
 static uint64_t asc_fifo_read(void *opaque, hwaddr addr,
