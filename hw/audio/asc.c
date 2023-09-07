@@ -333,7 +333,14 @@ static void asc_out_cb(void *opaque, int free_b)
         break;
     }
 
+    int now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    int silent_samples = muldiv64(now - s->fifo_empty_ns, NANOSECONDS_PER_SECOND, ASC_FREQ);
+
     if (!generated) {
+        if (silent_samples > ASC_FIFO_CYCLE_TIME / 2) {
+            fprintf(stderr, "### generate silence %d samples\n", samples);
+            AUD_write(s->voice, s->silentbuf, samples << s->shift);
+        }
         return;
     }
 
@@ -610,6 +617,7 @@ static void asc_unrealize(DeviceState *dev)
     ASCState *s = ASC(dev);
 
     g_free(s->mixbuf);
+    g_free(s->silentbuf);
 
     AUD_remove_card(&s->card);
 }
@@ -631,6 +639,9 @@ static void asc_realize(DeviceState *dev, Error **errp)
     s->shift = 1;
     s->samples = AUD_get_buffer_size_out(s->voice) >> s->shift;
     s->mixbuf = g_malloc0(s->samples << s->shift);
+
+    s->silentbuf = g_malloc0(s->samples << s->shift);
+    memset(s->silentbuf, 0x80, s->samples << s->shift);
 
     /* Add easc registers if required */
     if (s->type == ASC_TYPE_EASC) {
