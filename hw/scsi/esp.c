@@ -296,7 +296,7 @@ static void do_command_phase(ESPState *s)
              * Switch to DATA IN phase but wait until initial data xfer is
              * complete before raising the command completion interrupt
              */
-            s->data_in_ready = false;
+            s->data_ready = false;
             esp_set_phase(s, STAT_DI);
         } else {
             esp_set_phase(s, STAT_DO);
@@ -826,7 +826,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
     s->async_len = len;
     s->async_buf = scsi_req_get_buf(req);
 
-    if (!to_device && !s->data_in_ready) {
+    if (!to_device && !s->data_ready) {
         switch (s->rregs[ESP_CMD]) {
         case CMD_SEL | CMD_DMA:
         case CMD_SEL:
@@ -838,7 +838,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * Initial incoming data xfer is complete so raise command
              * completion interrupt
              */
-             s->data_in_ready = true;
+             s->data_ready = true;
              s->rregs[ESP_RINTR] |= INTR_BS;
              esp_raise_irq(s);
              break;
@@ -849,7 +849,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * Bus service interrupt raised because of initial change to
              * DATA phase
              */
-            s->data_in_ready = true;
+            s->data_ready = true;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
             break;
@@ -1228,7 +1228,7 @@ const VMStateDescription vmstate_esp = {
         VMSTATE_UINT32_TEST(mig_cmdlen, ESPState, esp_is_before_version_5),
         VMSTATE_UINT32(do_cmd, ESPState),
         VMSTATE_UINT32_TEST(mig_dma_left, ESPState, esp_is_before_version_5),
-        VMSTATE_BOOL_TEST(data_in_ready, ESPState, esp_is_version_5),
+        VMSTATE_BOOL_TEST(data_ready, ESPState, esp_is_version_5),
         VMSTATE_UINT8_TEST(cmdfifo_cdb_offset, ESPState, esp_is_version_5),
         VMSTATE_FIFO8_TEST(fifo, ESPState, esp_is_version_5),
         VMSTATE_FIFO8_TEST(cmdfifo, ESPState, esp_is_version_5),
