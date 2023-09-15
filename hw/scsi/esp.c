@@ -819,14 +819,15 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
 void esp_transfer_data(SCSIRequest *req, uint32_t len)
 {
     ESPState *s = req->hba_private;
-    int to_device = (esp_get_phase(s) == STAT_DO);
     uint32_t dmalen = esp_get_tc(s);
 
     trace_esp_transfer_data(dmalen, s->ti_size);
     s->async_len = len;
     s->async_buf = scsi_req_get_buf(req);
 
-    if (!to_device && !s->data_ready) {
+    if (!s->data_ready) {
+        s->data_ready = true;
+
         switch (s->rregs[ESP_CMD]) {
         case CMD_SEL | CMD_DMA:
         case CMD_SEL:
@@ -838,7 +839,6 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * Initial incoming data xfer is complete so raise command
              * completion interrupt
              */
-             s->data_ready = true;
              s->rregs[ESP_RINTR] |= INTR_BS;
              esp_raise_irq(s);
              break;
@@ -849,7 +849,6 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * Bus service interrupt raised because of initial change to
              * DATA phase
              */
-            s->data_ready = true;
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
             break;
