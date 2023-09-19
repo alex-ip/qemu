@@ -292,7 +292,6 @@ static void do_command_phase(ESPState *s)
     fifo8_reset(&s->cmdfifo);
     s->data_ready = false;
     if (datalen != 0) {
-        s->ti_cmd = 0;
         /*
          * Switch to DATA phase but wait until initial data xfer is
          * complete before raising the command completion interrupt
@@ -875,12 +874,12 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
      * async data transfer is delayed then s->dma is set incorrectly.
      */
 
-    if (s->ti_cmd == (CMD_TI | CMD_DMA)) {
+    if (s->rregs[ESP_CMD] == (CMD_TI | CMD_DMA)) {
         /* When the SCSI layer returns more data, raise deferred INTR_BS */
         esp_dma_ti_check(s);
 
         esp_do_dma(s);
-    } else if (s->ti_cmd == CMD_TI) {
+    } else if (s->rregs[ESP_CMD] == CMD_TI) {
         esp_do_nodma(s);
     }
 }
@@ -894,7 +893,6 @@ static void handle_ti(ESPState *s)
         return;
     }
 
-    s->ti_cmd = s->rregs[ESP_CMD];
     if (s->dma) {
         dmalen = esp_get_tc(s);
         trace_esp_handle_ti(dmalen);
@@ -1167,6 +1165,14 @@ static bool esp_is_version_6(void *opaque, int version_id)
     return version_id >= 6;
 }
 
+static bool esp_is_between_version_5_and_6(void *opaque, int version_id)
+{
+    ESPState *s = ESP(opaque);
+
+    version_id = MIN(version_id, s->mig_version_id);
+    return version_id >= 5 && version_id <= 6;
+}
+
 int esp_pre_save(void *opaque)
 {
     ESPState *s = ESP(object_resolve_path_component(
@@ -1232,7 +1238,8 @@ const VMStateDescription vmstate_esp = {
         VMSTATE_UINT8_TEST(cmdfifo_cdb_offset, ESPState, esp_is_version_5),
         VMSTATE_FIFO8_TEST(fifo, ESPState, esp_is_version_5),
         VMSTATE_FIFO8_TEST(cmdfifo, ESPState, esp_is_version_5),
-        VMSTATE_UINT8_TEST(ti_cmd, ESPState, esp_is_version_5),
+        VMSTATE_UINT8_TEST(mig_ti_cmd, ESPState,
+                           esp_is_between_version_5_and_6),
         VMSTATE_UINT8_TEST(lun, ESPState, esp_is_version_6),
         VMSTATE_END_OF_LIST()
     },
