@@ -1312,8 +1312,6 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     ESPState *s = ESP(&sysbus->esp);
     uint64_t val = 0;
 
-    trace_esp_pdma_read(size);
-
     switch (size) {
     case 1:
         val = esp_pdma_read(s);
@@ -1324,6 +1322,8 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
         break;
     }
     esp_do_dma(s);
+
+    trace_esp_pdma_read(size, esp_get_tc(s), s->async_len, s->ti_size, fifo8_num_used(&s->fifo));
     return val;
 }
 
