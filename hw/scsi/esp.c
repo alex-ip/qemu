@@ -426,9 +426,13 @@ static void write_response(ESPState *s)
 
 static void esp_dma_ti_check(ESPState *s)
 {
-    if (esp_get_tc(s) == 0 && fifo8_num_used(&s->fifo) < 2) {
+    if (esp_get_tc(s) == 0 && s->async_len) { // && fifo8_num_used(&s->fifo) < 2) {
         s->rregs[ESP_RINTR] |= INTR_BS;
         esp_raise_irq(s);
+        //esp_lower_drq(s);
+    }
+    
+    if (fifo8_num_used(&s->fifo) < 2) {
         esp_lower_drq(s);
     }
 }
@@ -598,7 +602,7 @@ static void esp_do_dma(ESPState *s)
             s->async_len -= len;
             s->ti_size -= len;
 
-            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+            if (s->async_len == 0 && len) {
                 scsi_req_continue(s->current_req);
                 return;
             }
@@ -614,7 +618,7 @@ static void esp_do_dma(ESPState *s)
             esp_set_tc(s, esp_get_tc(s) - len);
             esp_raise_drq(s);
 
-            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+            if (s->async_len == 0 && len) {
                 /* Defer until the scsi layer has completed */
                 scsi_req_continue(s->current_req);
                 return;
@@ -821,7 +825,7 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
     s->rregs[ESP_CMD] = 0;
     s->rregs[ESP_RINTR] |= INTR_BS;
     esp_raise_irq(s);
-    esp_lower_drq(s);
+    //esp_lower_drq(s);
 
     if (s->current_req) {
         scsi_req_unref(s->current_req);
@@ -1117,10 +1121,10 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
              * If any unexpected message out/command phase data is
              * transferred using non-DMA, raise the interrupt
              */
-            if (s->rregs[ESP_CMD] == CMD_TI) {
-                s->rregs[ESP_RINTR] |= INTR_BS;
-                esp_raise_irq(s);
-            }
+            //if (s->rregs[ESP_CMD] == CMD_TI) {
+            //    s->rregs[ESP_RINTR] |= INTR_BS;
+            //    esp_raise_irq(s);
+            //}
         } else {
             esp_fifo_push(&s->fifo, val);
         }
