@@ -546,7 +546,7 @@ static void esp_do_dma(ESPState *s)
             s->async_len -= len;
             s->ti_size += len;
 
-            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+            if (s->async_len == 0 && len) {
                 scsi_req_continue(s->current_req);
                 /*
                  * If there is still data to be read from the device then
@@ -569,7 +569,7 @@ static void esp_do_dma(ESPState *s)
 
             esp_raise_drq(s);
 
-            if (s->async_len == 0 && fifo8_num_used(&s->fifo) < 2) {
+            if (s->async_len == 0 && len) {
                 scsi_req_continue(s->current_req);
                 /*
                  * If there is still data to be read from the device then
