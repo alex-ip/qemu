@@ -1111,23 +1111,22 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
         s->rregs[ESP_RSTAT] &= ~STAT_TC;
         break;
     case ESP_FIFO:
-        if (esp_get_phase(s) == STAT_MO || esp_get_phase(s) == STAT_CD) {
             if (!fifo8_is_full(&s->fifo)) {
                 esp_fifo_push(&s->fifo, val);
-                esp_fifo_push(&s->cmdfifo, fifo8_pop(&s->fifo));
+
+                if (esp_get_phase(s) == STAT_MO || esp_get_phase(s) == STAT_CD) {
+                    esp_fifo_push(&s->cmdfifo, fifo8_pop(&s->fifo));
+                }
             }
 
             /*
              * If any unexpected message out/command phase data is
              * transferred using non-DMA, raise the interrupt
              */
-            //if (s->rregs[ESP_CMD] == CMD_TI) {
-            //    s->rregs[ESP_RINTR] |= INTR_BS;
-            //    esp_raise_irq(s);
-            //}
-        } else {
-            esp_fifo_push(&s->fifo, val);
-        }
+            if (s->rregs[ESP_CMD] == CMD_TI) {
+                s->rregs[ESP_RINTR] |= INTR_BS;
+                esp_raise_irq(s);
+            }
         break;
     case ESP_CMD:
         s->rregs[saddr] = val;
