@@ -429,7 +429,7 @@ static void esp_dma_ti_check(ESPState *s)
     bool to_device = (esp_get_phase(s) == STAT_DO);
 
     if (to_device) {
-        if (esp_get_tc(s) == 0) { // && fifo8_num_used(&s->fifo) < 2) {
+        if (esp_get_tc(s) == 0 && fifo8_is_empty(&s->fifo)) { // && fifo8_num_used(&s->fifo) < 2) {
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
             //esp_lower_drq(s);
@@ -439,13 +439,14 @@ static void esp_dma_ti_check(ESPState *s)
             esp_lower_drq(s);
         }
     } else {
+        /* As the TC reaches 0, but there is still data left in the FIFO */
         if (esp_get_tc(s) == 0 && s->async_len) { // && fifo8_num_used(&s->fifo) < 2) {
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
             //esp_lower_drq(s);
         }
 
-        if (esp_get_tc(s) && s->ti_size == 0 && fifo8_num_used(&s->fifo) < 2) {
+        if (esp_get_tc(s) && s->ti_size == 0 && fifo8_is_empty(&s->fifo)) {
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
         }
