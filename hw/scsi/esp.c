@@ -407,20 +407,12 @@ static void handle_satn_stop(ESPState *s)
 
 static void write_response(ESPState *s)
 {
-    uint8_t buf[2];
-
     trace_esp_write_response(s->status);
 
     if (s->dma) {
         esp_do_dma(s);
     } else {
-        buf[0] = s->status;
-        buf[1] = 0;
-
-        fifo8_reset(&s->fifo);
-        fifo8_push_all(&s->fifo, buf, 2);
-        s->rregs[ESP_RFLAGS] = 2;
-        esp_raise_irq(s);
+        esp_do_nodma(s);
     }
 }
 
@@ -799,8 +791,10 @@ static void esp_do_nodma(ESPState *s)
         switch (s->rregs[ESP_CMD]) {
         case CMD_ICCS:
             fifo8_push(&s->fifo, s->status);
-
             esp_set_phase(s, STAT_MI);
+
+            /* Process any message in phase data */
+            esp_do_nodma(s);
             break;
         }
         break;
