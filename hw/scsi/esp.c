@@ -1315,8 +1315,6 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     SysBusESPState *sysbus = opaque;
     ESPState *s = ESP(&sysbus->esp);
 
-    trace_esp_pdma_write(size);
-
     switch (size) {
     case 1:
         esp_pdma_write(s, val);
@@ -1327,6 +1325,7 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
         break;
     }
     esp_do_dma(s);
+    trace_esp_pdma_write(size, esp_get_tc(s), s->async_len, s->ti_size, fifo8_num_used(&s->fifo));
 }
 
 static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
