@@ -426,14 +426,33 @@ static void write_response(ESPState *s)
 
 static void esp_dma_ti_check(ESPState *s)
 {
-    if (esp_get_tc(s) == 0 && s->async_len) { // && fifo8_num_used(&s->fifo) < 2) {
-        s->rregs[ESP_RINTR] |= INTR_BS;
-        esp_raise_irq(s);
-        //esp_lower_drq(s);
-    }
-    
-    if (fifo8_num_used(&s->fifo) < 2) {
-        esp_lower_drq(s);
+    bool to_device = (esp_get_phase(s) == STAT_DO);
+
+    if (to_device) {
+        if (esp_get_tc(s) == 0) { // && fifo8_num_used(&s->fifo) < 2) {
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+            //esp_lower_drq(s);
+        }
+
+        if (fifo8_num_free(&s->fifo) < 2) {
+            esp_lower_drq(s);
+        }
+    } else {
+        if (esp_get_tc(s) == 0 && s->async_len) { // && fifo8_num_used(&s->fifo) < 2) {
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+            //esp_lower_drq(s);
+        }
+
+        if (esp_get_tc(s) && s->ti_size == 0 && fifo8_num_used(&s->fifo) < 2) {
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+        }
+
+        if (fifo8_num_used(&s->fifo) < 2) {
+            esp_lower_drq(s);
+        }
     }
 }
 
