@@ -656,7 +656,7 @@ static void esp_do_dma(ESPState *s)
                     esp_set_tc(s, esp_get_tc(s) - len);
                 }
 
-                esp_set_phase(s, STAT_DI);
+                esp_set_phase(s, STAT_MI);
 
                 if (esp_get_tc(s) > 0) {
                     /* Process any message in phase data */
