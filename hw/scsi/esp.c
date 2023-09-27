@@ -774,6 +774,27 @@ static void esp_do_nodma(ESPState *s)
         s->rregs[ESP_RINTR] |= INTR_BS;
         esp_raise_irq(s);
         break;
+
+    case STAT_ST:
+        switch (s->rregs[ESP_CMD]) {
+        case CMD_ICCS:
+            fifo8_push(&s->fifo, s->status);
+
+            esp_set_phase(s, STAT_MI);
+            break;
+        }
+        break;
+
+    case STAT_MI:
+        switch (s->rregs[ESP_CMD]) {
+        case CMD_ICCS:
+            fifo8_push(&s->fifo, 0);
+
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+            break;
+        }
+        break;
     }
 }
 
