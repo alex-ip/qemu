@@ -1068,25 +1068,19 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
 
     switch (saddr) {
     case ESP_FIFO:
-        if (s->dma_memory_read && s->dma_memory_write &&
-                (s->rregs[ESP_RSTAT] & STAT_PIO_MASK) == 0) {
-            /* Data out.  */
-            qemu_log_mask(LOG_UNIMP, "esp: PIO data read not implemented\n");
-            s->rregs[ESP_FIFO] = 0;
-        } else {
-            s->rregs[ESP_FIFO] = esp_fifo_pop(&s->fifo);
+        s->rregs[ESP_FIFO] = esp_fifo_pop(&s->fifo);
 
-            /*
-             * If the last transfer of a DATA phase terminates early (i.e. we
-             * used a TC larger than the available data) then detect this, and
-             * call esp_dma_ti_check() which will detect this condition and
-             * handle it accordingly
-             */
-            if (esp_get_phase(s) == STAT_ST && fifo8_is_empty(&s->fifo) &&
-                    s->rregs[ESP_CMD] == 0x0) {
-                esp_dma_ti_check(s);
-            }
+        /*
+         * If the last transfer of a DATA phase terminates early (i.e. we
+         * used a TC larger than the available data) then detect this, and
+         * call esp_dma_ti_check() which will detect this condition and
+         * handle it accordingly
+         */
+        if (esp_get_phase(s) == STAT_ST && fifo8_is_empty(&s->fifo) &&
+                s->rregs[ESP_CMD] == 0x0) {
+            esp_dma_ti_check(s);
         }
+
         val = s->rregs[ESP_FIFO];
         break;
     case ESP_RINTR:
