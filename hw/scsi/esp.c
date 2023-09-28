@@ -707,10 +707,10 @@ static void esp_do_nodma(ESPState *s)
                 esp_set_phase(s, STAT_CD);
                 s->cmdfifo_cdb_offset = 1;
 
-                /* Raise command completion interrupt */
-                s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
-                s->rregs[ESP_RSEQ] = SEQ_CD;
-                esp_raise_irq(s);
+                if (fifo8_num_used(&s->cmdfifo) > 1) {
+                    /* Process any additional command phase data */
+                    esp_do_nodma(s);
+                }
             }
             break;
 
