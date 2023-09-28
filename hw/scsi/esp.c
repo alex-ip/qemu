@@ -371,9 +371,7 @@ static void handle_s_without_atn(ESPState *s)
     if (s->dma) {
         esp_do_dma(s);
     } else {
-        if (get_cmd(s, ESP_CMDFIFO_SZ)) {
-            do_cmd(s);
-        }
+        esp_do_nodma(s);
     }
 }
 
@@ -394,14 +392,7 @@ static void handle_satn_stop(ESPState *s)
     if (s->dma) {
         esp_do_dma(s);
     } else {
-        if (get_cmd(s, 1)) {
-            trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
-
-            /* Raise command completion interrupt */
-            s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
-            s->rregs[ESP_RSEQ] = SEQ_MO;
-            esp_raise_irq(s);
-        }
+        esp_do_nodma(s);
     }
 }
 
@@ -492,12 +483,11 @@ static void esp_do_dma(ESPState *s)
         case CMD_SELATNS | CMD_DMA:
             if (fifo8_num_used(&s->cmdfifo) == 1) {
                 /* First byte received, stop in message out phase */
-                esp_set_phase(s, STAT_CD);
                 s->cmdfifo_cdb_offset = 1;
 
                 /* Raise command completion interrupt */
                 s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
-                s->rregs[ESP_RSEQ] = SEQ_CD;
+                s->rregs[ESP_RSEQ] = SEQ_MO;
                 esp_raise_irq(s);
             }
             break;
@@ -698,6 +688,7 @@ static void esp_do_dma(ESPState *s)
 static void esp_do_nodma(ESPState *s)
 {
     uint8_t buf[ESP_FIFO_SZ];
+    const uint8_t *pbuf;
     uint32_t cmdlen;
     int len, n;
 
@@ -709,16 +700,42 @@ static void esp_do_nodma(ESPState *s)
         fifo8_push_all(&s->cmdfifo, buf, n);
         s->cmdfifo_cdb_offset += n;
 
-        /*
-         * Extra message out bytes received: update cmdfifo_cdb_offset
-         * and then switch to command phase
-         */
-        s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
-        esp_set_phase(s, STAT_CD);
-        s->rregs[ESP_CMD] = 0;
-        s->rregs[ESP_RSEQ] = SEQ_CD;
-        s->rregs[ESP_RINTR] |= INTR_BS;
-        esp_raise_irq(s);
+        switch (s->rregs[ESP_CMD]) {
+        case CMD_SELATN:
+            if (fifo8_num_used(&s->cmdfifo) >= 1) {
+                /* First byte received, switch to command phase */
+                esp_set_phase(s, STAT_CD);
+                s->cmdfifo_cdb_offset = 1;
+
+                /* Raise command completion interrupt */
+                s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
+                s->rregs[ESP_RSEQ] = SEQ_CD;
+                esp_raise_irq(s);
+            }
+            break;
+
+        case CMD_SELATNS:
+            if (fifo8_num_used(&s->cmdfifo) == 1) {
+                /* First byte received, stop in message out phase */
+                s->cmdfifo_cdb_offset = 1;
+
+                /* Raise command completion interrupt */
+                s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
+                s->rregs[ESP_RSEQ] = SEQ_MO;
+                esp_raise_irq(s);
+            }
+            break;
+
+        case CMD_TI:
+            /* ATN remains asserted until FIFO empty */
+            s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
+            esp_set_phase(s, STAT_CD);
+            s->rregs[ESP_CMD] = 0;
+            s->rregs[ESP_RSEQ] = SEQ_CD;
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+            break;
+        }
         break;
 
     case STAT_CD:
@@ -727,17 +744,21 @@ static void esp_do_nodma(ESPState *s)
         n = MIN(fifo8_num_free(&s->cmdfifo), n);
         fifo8_push_all(&s->cmdfifo, buf, n);
 
+        if (s->rregs[ESP_CMD] == CMD_TI) {
+            s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
+        }
+
         cmdlen = fifo8_num_used(&s->cmdfifo);
         trace_esp_handle_ti_cmd(cmdlen);
         s->ti_size = 0;
 
-        /* No command received */
-        if (s->cmdfifo_cdb_offset == fifo8_num_used(&s->cmdfifo)) {
-            return;
+        pbuf = fifo8_peek_buf(&s->cmdfifo, cmdlen, NULL);
+        if (scsi_cdb_length((uint8_t *)&pbuf[s->cmdfifo_cdb_offset]) ==
+                fifo8_num_used(&s->cmdfifo) - s->cmdfifo_cdb_offset) {
+            /* Command has been received */
+            do_cmd(s);
         }
-
-        /* Command has been received */
-        do_cmd(s);
         break;
 
     case STAT_DO:
@@ -1112,7 +1133,8 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
          */
         val = s->rregs[ESP_RINTR];
         s->rregs[ESP_RINTR] = 0;
-        s->rregs[ESP_RSTAT] &= ~STAT_TC;
+        esp_lower_irq(s);
+        s->rregs[ESP_RSTAT] &= (STAT_TC | 7);
         /*
          * According to the datasheet ESP_RSEQ should be cleared, but as the
          * emulation currently defers information transfers to the next TI
@@ -1122,7 +1144,6 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
          *
          * s->rregs[ESP_RSEQ] = SEQ_0;
          */
-        esp_lower_irq(s);
         break;
     case ESP_TCHI:
         /* Return the unique id if the value has never been written */
@@ -1160,19 +1181,20 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
             if (!fifo8_is_full(&s->fifo)) {
                 esp_fifo_push(&s->fifo, val);
 
-                if (esp_get_phase(s) == STAT_MO || esp_get_phase(s) == STAT_CD) {
-                    esp_fifo_push(&s->cmdfifo, fifo8_pop(&s->fifo));
-                }
+                //if (esp_get_phase(s) == STAT_MO || esp_get_phase(s) == STAT_CD) {
+                //    esp_fifo_push(&s->cmdfifo, fifo8_pop(&s->fifo));
+                //}
+                esp_do_nodma(s);
             }
 
             /*
              * If any unexpected message out/command phase data is
              * transferred using non-DMA, raise the interrupt
              */
-            if (s->rregs[ESP_CMD] == CMD_TI) {
-                s->rregs[ESP_RINTR] |= INTR_BS;
-                esp_raise_irq(s);
-            }
+            //if (s->rregs[ESP_CMD] == CMD_TI) {
+            //    s->rregs[ESP_RINTR] |= INTR_BS;
+            //    esp_raise_irq(s);
+            //}
         break;
     case ESP_CMD:
         s->rregs[saddr] = val;
