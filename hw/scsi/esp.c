@@ -235,40 +235,6 @@ static int esp_select(ESPState *s)
 static void esp_do_dma(ESPState *s);
 static void esp_do_nodma(ESPState *s);
 
-static uint32_t get_cmd(ESPState *s, uint32_t maxlen)
-{
-    uint8_t buf[ESP_CMDFIFO_SZ];
-    uint32_t dmalen, n;
-    int target;
-
-    target = s->wregs[ESP_WBUSID] & BUSID_DID;
-    if (s->dma) {
-        dmalen = MIN(esp_get_tc(s), maxlen);
-        if (dmalen == 0) {
-            return 0;
-        }
-        if (s->dma_memory_read) {
-            s->dma_memory_read(s->dma_opaque, buf, dmalen);
-            dmalen = MIN(fifo8_num_free(&s->cmdfifo), dmalen);
-            fifo8_push_all(&s->cmdfifo, buf, dmalen);
-            esp_set_tc(s, esp_get_tc(s) - dmalen);
-        } else {
-            return 0;
-        }
-    } else {
-        dmalen = MIN(fifo8_num_used(&s->fifo), maxlen);
-        if (dmalen == 0) {
-            return 0;
-        }
-        n = esp_fifo_pop_buf(&s->fifo, buf, dmalen);
-        n = MIN(fifo8_num_free(&s->cmdfifo), n);
-        fifo8_push_all(&s->cmdfifo, buf, n);
-    }
-    trace_esp_get_cmd(dmalen, target);
-
-    return dmalen;
-}
-
 static void do_command_phase(ESPState *s)
 {
     uint32_t cmdlen;
@@ -342,14 +308,12 @@ static void handle_satn(ESPState *s)
     }
 
     esp_set_phase(s, STAT_MO);
+    s->cmdfifo_cdb_offset = 0;
 
     if (s->dma) {
         esp_do_dma(s);
     } else {
-        if (get_cmd(s, ESP_CMDFIFO_SZ)) {
-            s->cmdfifo_cdb_offset = 1;
-            do_cmd(s);
-        }
+        esp_do_nodma(s);
     }
 }
 
@@ -388,6 +352,7 @@ static void handle_satn_stop(ESPState *s)
 
     esp_set_phase(s, STAT_MO);
     s->rregs[ESP_RSEQ] = SEQ_MO;
+    s->cmdfifo_cdb_offset = 0;
 
     if (s->dma) {
         esp_do_dma(s);
@@ -744,20 +709,29 @@ static void esp_do_nodma(ESPState *s)
         n = MIN(fifo8_num_free(&s->cmdfifo), n);
         fifo8_push_all(&s->cmdfifo, buf, n);
 
-        if (s->rregs[ESP_CMD] == CMD_TI) {
-            s->rregs[ESP_RINTR] |= INTR_BS;
-            esp_raise_irq(s);
-        }
-
         cmdlen = fifo8_num_used(&s->cmdfifo);
         trace_esp_handle_ti_cmd(cmdlen);
-        s->ti_size = 0;
 
-        pbuf = fifo8_peek_buf(&s->cmdfifo, cmdlen, NULL);
-        if (scsi_cdb_length((uint8_t *)&pbuf[s->cmdfifo_cdb_offset]) ==
+        switch (s->rregs[ESP_CMD]) {
+        case CMD_TI:
+            /* CDB may be transferred in one or more TI commands */
+            pbuf = fifo8_peek_buf(&s->cmdfifo, cmdlen, NULL);
+            if (scsi_cdb_length((uint8_t *)&pbuf[s->cmdfifo_cdb_offset]) ==
                 fifo8_num_used(&s->cmdfifo) - s->cmdfifo_cdb_offset) {
-            /* Command has been received */
+                    /* Command has been received */
+                    do_cmd(s);
+            } else {
+                /* Raise interrupt to indicate transfer complete */
+                s->rregs[ESP_RINTR] |= INTR_BS;
+                esp_raise_irq(s);
+            }
+            break;
+
+        case CMD_SEL:
+        case CMD_SELATN:
+            /* FIFO contents already contain entire CDB */
             do_cmd(s);
+            break;
         }
         break;
 
