@@ -223,12 +223,6 @@ static int esp_select(ESPState *s)
         return -1;
     }
 
-    /*
-     * Note that we deliberately don't raise the IRQ here: this will be done
-     * either in do_command_phase() for DATA OUT transfers or by the deferred
-     * IRQ mechanism in esp_transfer_data() for DATA IN transfers
-     */
-    s->rregs[ESP_RSEQ] = SEQ_CD;
     return 0;
 }
 
@@ -377,28 +371,24 @@ static void esp_dma_ti_check(ESPState *s)
     bool to_device = (esp_get_phase(s) == STAT_DO);
 
     if (to_device) {
-        if (esp_get_tc(s) == 0 && fifo8_is_empty(&s->fifo)) { // && fifo8_num_used(&s->fifo) < 2) {
+        /* Transfer is complete when TC == 0 and FIFO is empty */
+        if (esp_get_tc(s) == 0 && fifo8_is_empty(&s->fifo)) {
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
-            //esp_lower_drq(s);
         }
 
+        /* Update DRQ */
         if (fifo8_num_free(&s->fifo) < 2) {
             esp_lower_drq(s);
         }
     } else {
-        /* As the TC reaches 0, but there is still data left in the FIFO */
-        if (esp_get_tc(s) == 0 && s->async_len) { // && fifo8_num_used(&s->fifo) < 2) {
-            s->rregs[ESP_RINTR] |= INTR_BS;
-            esp_raise_irq(s);
-            //esp_lower_drq(s);
-        }
-
-        if (esp_get_tc(s) && s->ti_size == 0 && fifo8_is_empty(&s->fifo)) {
+        /* Transfer is complete when TC == 0 but data remains in FIFO */
+        if (esp_get_tc(s) == 0 && s->async_len) {
             s->rregs[ESP_RINTR] |= INTR_BS;
             esp_raise_irq(s);
         }
 
+        /* Update DRQ */
         if (fifo8_num_used(&s->fifo) < 2) {
             esp_lower_drq(s);
         }
@@ -855,7 +845,6 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
     s->rregs[ESP_CMD] = 0;
     s->rregs[ESP_RINTR] |= INTR_BS;
     esp_raise_irq(s);
-    //esp_lower_drq(s);
 
     if (s->current_req) {
         scsi_req_unref(s->current_req);
