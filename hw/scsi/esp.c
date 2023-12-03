@@ -358,6 +358,15 @@ static void handle_satn_stop(ESPState *s)
     }
 }
 
+static void handle_pad(ESPState *s)
+{
+    if (s->dma) {
+        esp_do_dma(s);
+    } else {
+        esp_do_nodma(s);
+    }
+}
+
 static void write_response(ESPState *s)
 {
     trace_esp_write_response(s->status);
@@ -525,19 +534,34 @@ static void esp_do_dma(ESPState *s)
             len = s->async_len;
         }
 
-        if (s->dma_memory_write) {
-            s->dma_memory_write(s->dma_opaque, s->async_buf, len);
-        } else {
-            /* Copy device data to FIFO */
-            len = MIN(len, fifo8_num_free(&s->fifo));
-            fifo8_push_all(&s->fifo, s->async_buf, len);
-            esp_raise_drq(s);
-        }
+        switch (s->rregs[ESP_CMD]) {
+        case CMD_TI | CMD_DMA:
+            if (s->dma_memory_write) {
+                s->dma_memory_write(s->dma_opaque, s->async_buf, len);
+            } else {
+                /* Copy device data to FIFO */
+                len = MIN(len, fifo8_num_free(&s->fifo));
+                fifo8_push_all(&s->fifo, s->async_buf, len);
+                esp_raise_drq(s);
+            }
 
-        s->async_buf += len;
-        s->async_len -= len;
-        s->ti_size -= len;
-        esp_set_tc(s, esp_get_tc(s) - len);
+            s->async_buf += len;
+            s->async_len -= len;
+            s->ti_size -= len;
+            esp_set_tc(s, esp_get_tc(s) - len);
+            break;
+
+        case CMD_PAD | CMD_DMA:
+            /* Drop TC bytes from the incoming stream */
+            if (!s->dma_memory_write) {
+                len = MIN(len, fifo8_num_free(&s->fifo));
+            }
+
+            s->async_len -= len;
+            s->ti_size -= len;
+            esp_set_tc(s, esp_get_tc(s) - len);
+            break;
+        }
 
         if (s->async_len == 0 && s->ti_size == 0 && esp_get_tc(s)) {
             /* If the guest underflows TC then terminate SCSI request */
@@ -1038,9 +1062,7 @@ static void esp_run_cmd(ESPState *s)
         break;
     case CMD_PAD:
         trace_esp_mem_writeb_cmd_pad(cmd);
-        s->rregs[ESP_RSTAT] = STAT_TC;
-        s->rregs[ESP_RINTR] |= INTR_FC;
-        s->rregs[ESP_RSEQ] = 0;
+        handle_pad(s);
         break;
     case CMD_SATN:
         trace_esp_mem_writeb_cmd_satn(cmd);
