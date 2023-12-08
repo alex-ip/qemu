@@ -250,10 +250,6 @@ static uint32_t get_cmd(ESPState *s, uint32_t maxlen)
             dmalen = MIN(fifo8_num_free(&s->cmdfifo), dmalen);
             fifo8_push_all(&s->cmdfifo, buf, dmalen);
         } else {
-            if (esp_select(s) < 0) {
-                return -1;
-            }
-            esp_raise_drq(s);
             return 0;
         }
     } else {
@@ -267,9 +263,6 @@ static uint32_t get_cmd(ESPState *s, uint32_t maxlen)
     }
     trace_esp_get_cmd(dmalen, target);
 
-    if (esp_select(s) < 0) {
-        return -1;
-    }
     return dmalen;
 }
 
@@ -358,12 +351,18 @@ static void handle_satn(ESPState *s)
         return;
     }
     esp_set_pdma_cb(s, SATN_PDMA_CB);
+    if (esp_select(s) < 0) {
+        return;
+    }
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 1;
         s->do_cmd = 0;
         do_cmd(s);
     } else if (cmdlen == 0) {
+        if (s->dma) {
+            esp_raise_drq(s);
+        }
         s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
@@ -389,12 +388,18 @@ static void handle_s_without_atn(ESPState *s)
         return;
     }
     esp_set_pdma_cb(s, S_WITHOUT_SATN_PDMA_CB);
+    if (esp_select(s) < 0) {
+        return;
+    }
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 0;
         s->do_cmd = 0;
         do_cmd(s);
     } else if (cmdlen == 0) {
+        if (s->dma) {
+            esp_raise_drq(s);
+        }
         s->do_cmd = 1;
         /* Target present, but no cmd yet - switch to command phase */
         s->rregs[ESP_RSEQ] = SEQ_CD;
@@ -424,6 +429,9 @@ static void handle_satn_stop(ESPState *s)
         return;
     }
     esp_set_pdma_cb(s, SATN_STOP_PDMA_CB);
+    if (esp_select(s) < 0) {
+        return;
+    }
     cmdlen = get_cmd(s, 1);
     if (cmdlen > 0) {
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
@@ -434,6 +442,9 @@ static void handle_satn_stop(ESPState *s)
         s->rregs[ESP_RSEQ] = SEQ_MO;
         esp_raise_irq(s);
     } else if (cmdlen == 0) {
+        if (s->dma) {
+            esp_raise_drq(s);
+        }
         s->do_cmd = 1;
         /* Target present, switch to message out phase */
         s->rregs[ESP_RSEQ] = SEQ_MO;
