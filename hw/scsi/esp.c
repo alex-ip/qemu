@@ -217,6 +217,7 @@ static int esp_select(ESPState *s)
     target = s->wregs[ESP_WBUSID] & BUSID_DID;
 
     s->ti_size = 0;
+    s->rregs[ESP_RSEQ] = SEQ_0;
 
     if (s->current_req) {
         /* Started a new command before the old one finished. Cancel it. */
@@ -228,7 +229,6 @@ static int esp_select(ESPState *s)
         /* No such drive */
         s->rregs[ESP_RSTAT] = 0;
         s->rregs[ESP_RINTR] = INTR_DC;
-        s->rregs[ESP_RSEQ] = SEQ_0;
         esp_raise_irq(s);
         return -1;
     }
@@ -237,7 +237,6 @@ static int esp_select(ESPState *s)
      * Note that we deliberately don't raise the IRQ here: this will be done
      * either in esp_transfer_data() or esp_command_complete()
      */
-    s->rregs[ESP_RSEQ] = SEQ_CD;
     return 0;
 }
 
@@ -336,7 +335,6 @@ static void handle_s_without_atn(ESPState *s)
     }
 
     esp_set_phase(s, STAT_CD);
-    s->rregs[ESP_RSEQ] = SEQ_CD;
     s->cmdfifo_cdb_offset = 0;
 
     if (s->dma) {
@@ -358,7 +356,6 @@ static void handle_satn_stop(ESPState *s)
     }
 
     esp_set_phase(s, STAT_MO);
-    s->rregs[ESP_RSEQ] = SEQ_MO;
     s->cmdfifo_cdb_offset = 0;
 
     if (s->dma) {
@@ -434,6 +431,7 @@ static void esp_do_dma(ESPState *s)
             if (fifo8_num_used(&s->cmdfifo) >= 1) {
                 /* First byte received, switch to command phase */
                 esp_set_phase(s, STAT_CD);
+                s->rregs[ESP_RSEQ] = SEQ_CD;
                 s->cmdfifo_cdb_offset = 1;
 
                 if (fifo8_num_used(&s->cmdfifo) > 1) {
@@ -446,11 +444,11 @@ static void esp_do_dma(ESPState *s)
         case CMD_SELATNS | CMD_DMA:
             if (fifo8_num_used(&s->cmdfifo) == 1) {
                 /* First byte received, stop in message out phase */
+                s->rregs[ESP_RSEQ] = SEQ_MO;
                 s->cmdfifo_cdb_offset = 1;
 
                 /* Raise command completion interrupt */
                 s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
-                s->rregs[ESP_RSEQ] = SEQ_CD;
                 esp_raise_irq(s);
             }
             break;
@@ -460,7 +458,6 @@ static void esp_do_dma(ESPState *s)
             if (esp_get_tc(s) == 0) {
                 esp_set_phase(s, STAT_CD);
                 s->rregs[ESP_CMD] = 0;
-                s->rregs[ESP_RSEQ] = SEQ_CD;
                 s->rregs[ESP_RINTR] |= INTR_BS;
                 esp_raise_irq(s);
             }
@@ -677,6 +674,7 @@ static void esp_do_nodma(ESPState *s)
             if (fifo8_num_used(&s->cmdfifo) >= 1) {
                 /* First byte received, switch to command phase */
                 esp_set_phase(s, STAT_CD);
+                s->rregs[ESP_RSEQ] = SEQ_CD;
                 s->cmdfifo_cdb_offset = 1;
 
                 if (fifo8_num_used(&s->cmdfifo) > 1) {
@@ -689,6 +687,7 @@ static void esp_do_nodma(ESPState *s)
         case CMD_SELATNS:
             if (fifo8_num_used(&s->cmdfifo) >= 1) {
                 /* First byte received, stop in message out phase */
+                s->rregs[ESP_RSEQ] = SEQ_MO;
                 s->cmdfifo_cdb_offset = 1;
 
                 /* Raise command completion interrupt */
@@ -869,6 +868,7 @@ void esp_command_complete(SCSIRequest *req, size_t resid)
           * and function complete interrupt
           */
          s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
+         s->rregs[ESP_RSEQ] = SEQ_CD;
          break;
     }
 
@@ -910,6 +910,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * so raise deferred bus service and function complete interrupt
              */
              s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
+             s->rregs[ESP_RSEQ] = SEQ_CD;
              break;
 
         case CMD_SELATNS | CMD_DMA:
@@ -919,6 +920,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              * completion interrupt
              */
              s->rregs[ESP_RINTR] |= INTR_BS;
+             s->rregs[ESP_RSEQ] = SEQ_MO;
              break;
 
         case CMD_TI | CMD_DMA:
