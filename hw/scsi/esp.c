@@ -641,8 +641,7 @@ static void esp_do_dma(ESPState *s)
                 }
 
                 /* Raise end of command interrupt */
-                s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
-                s->rregs[ESP_RSEQ] = SEQ_CD;
+                s->rregs[ESP_RINTR] |= INTR_FC;
                 esp_raise_irq(s);
             }
             break;
@@ -816,6 +815,8 @@ static void esp_do_nodma(ESPState *s)
         case CMD_ICCS:
             fifo8_push(&s->fifo, 0);
 
+            /* Raise end of command interrupt */
+            s->rregs[ESP_RINTR] |= INTR_FC;
             esp_raise_irq(s);
             break;
         }
@@ -1047,8 +1048,6 @@ static void esp_run_cmd(ESPState *s)
     case CMD_ICCS:
         trace_esp_mem_writeb_cmd_iccs(cmd);
         write_response(s);
-        s->rregs[ESP_RINTR] |= INTR_FC;
-        esp_set_phase(s, STAT_MI);
         break;
     case CMD_MSGACC:
         trace_esp_mem_writeb_cmd_msgacc(cmd);
