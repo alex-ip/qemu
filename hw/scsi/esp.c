@@ -748,13 +748,13 @@ static void esp_do_nodma(ESPState *s)
         break;
 
     case STAT_CD:
-        /* Copy FIFO into cmdfifo */
-        n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
-        n = MIN(fifo8_num_free(&s->cmdfifo), n);
-        fifo8_push_all(&s->cmdfifo, buf, n);
-
         switch (s->rregs[ESP_CMD]) {
         case CMD_TI:
+            /* Copy FIFO into cmdfifo */
+            n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
+            n = MIN(fifo8_num_free(&s->cmdfifo), n);
+            fifo8_push_all(&s->cmdfifo, buf, n);
+
             cmdlen = fifo8_num_used(&s->cmdfifo);
             trace_esp_handle_ti_cmd(cmdlen);
 
@@ -779,6 +779,11 @@ static void esp_do_nodma(ESPState *s)
 
         case CMD_SEL | CMD_DMA:
         case CMD_SELATN | CMD_DMA:
+            /* Copy FIFO into cmdfifo */
+            n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
+            n = MIN(fifo8_num_free(&s->cmdfifo), n);
+            fifo8_push_all(&s->cmdfifo, buf, n);
+
             /* Handle when DMA transfer is terminated by non-DMA FIFO write */
             if (esp_cdb_length(s) && esp_cdb_length(s) ==
                 fifo8_num_used(&s->cmdfifo) - s->cmdfifo_cdb_offset) {
@@ -789,7 +794,11 @@ static void esp_do_nodma(ESPState *s)
 
         case CMD_SEL:
         case CMD_SELATN:
-            /* FIFO already contain entire CDB */
+            /* FIFO already contain entire CDB: copy to cmdfifo and execute */
+            n = esp_fifo_pop_buf(&s->fifo, buf, fifo8_num_used(&s->fifo));
+            n = MIN(fifo8_num_free(&s->cmdfifo), n);
+            fifo8_push_all(&s->cmdfifo, buf, n);
+
             do_cmd(s);
             break;
         }
